@@ -13,6 +13,15 @@ swift test                     # テスト（保存と読み込み、マクロ�
 
 動作要件は macOS 14 以降と Xcode 16 以降のツールチェーンです。
 
+### 配布用のビルド
+
+```bash
+VERSION=0.1.0 UNIVERSAL=1 ./Scripts/bundle.sh release   # Apple silicon と Intel 両対応の .app
+ditto -c -k --keepParent "build/Metal Composer.app" "build/MetalComposer-0.1.0-macOS.zip"
+```
+
+アドホック署名で公証（notarization）はしていないので、ダウンロードした .app の初回起動時は macOS にブロックされます。Finder でアプリを右クリック › 開く（macOS 15 では、システム設定 › プライバシーとセキュリティ › 「このまま開く」）で起動できます。
+
 ## 操作方法
 
 | 操作 | 方法 |
