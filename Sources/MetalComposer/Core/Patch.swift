@@ -236,7 +236,8 @@ enum PatchRegistry {
         ImageImporterPatch.self, TextImagePatch.self,
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,
-        SmoothPatch.self, ConditionalPatch.self, RGBColorPatch.self, HSLColorPatch.self,
+        SmoothPatch.self, ConditionalPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
+        RGBColorPatch.self, HSLColorPatch.self,
         CoreImageFilterPatch.self,
         // Consumers
         ClearPatch.self, BillboardPatch.self, SpritePatch.self, ParticleSystemPatch.self, MetalShaderPatch.self,

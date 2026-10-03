@@ -47,6 +47,7 @@ swift test                     # テスト（保存と読み込み、マクロ�
 - **Structure Index Member／Key Member**：番号（0 から始まる）またはキーで、要素を 1 つ取り出します。該当する要素がないときは何も出力しません。
 - **Structure Count**：要素の数を出力します。
 - **Queue**：入力を毎フレーム（または値が変わったときだけ）追加し、Size を超えると古いものから捨てます。順序は「古い順」と「新しい順」から選べます。Filling で追加を一時停止、Reset で空にします。画像は GPU 上でコピーして保持するので、Render In Image のように毎フレーム同じテクスチャを使い回すパッチの出力でも、各要素がそれぞれのフレームを保ちます（ビデオディレイなどに使えます）。
+- **Multiplexer**：複数の入力のうち、Source Index（0 から始まる番号）で選んだ 1 つを出力します。**Demultiplexer**：1 つの入力を、Destination Index で選んだ出力に送ります。選ばれていない出力は「最後の値を保持」か「初期値に戻す」を選べます。どちらもポート数（2〜64）と型（既定は Virtual）を設定でき、番号が範囲外のときは端の番号に丸めます。
 - デモ「Structures & Queue」：位置を {x, y} の Structure にして Queue で 60 フレーム分ため、Iterator で軌跡として描きます。
 
 ## Sprite と Billboard
