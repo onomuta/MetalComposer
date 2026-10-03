@@ -6,7 +6,8 @@ CONFIG=${1:-release}
 swift build -c "$CONFIG"
 APP="build/Metal Composer.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp Assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp ".build/$CONFIG/MetalComposer" "$APP/Contents/MacOS/MetalComposer"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -17,9 +18,11 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>dev.metalcomposer.app</string>
   <key>CFBundleExecutable</key><string>MetalComposer</string>
   <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleShortVersionString</key><string>0.1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSMicrophoneUsageDescription</key><string>Audio Input and Audio Spectrum patches react to sound from the microphone or audio input.</string>
 </dict>
 </plist>
 PLIST

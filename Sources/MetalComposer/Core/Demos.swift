@@ -6,6 +6,7 @@ enum Demo: String, CaseIterable, Identifiable {
     case iterator = "Iterator"
     case cube = "3D Cube"
     case structures = "Structures & Queue"
+    case audio = "Audio Reactive"
 
     var id: String { rawValue }
 
@@ -16,6 +17,7 @@ enum Demo: String, CaseIterable, Identifiable {
         case .iterator: Self.iterator(g)
         case .cube: Self.cube(g)
         case .structures: Self.structures(g)
+        case .audio: Self.audio(g)
         }
     }
 
@@ -184,5 +186,48 @@ enum Demo: String, CaseIterable, Identifiable {
         sub.link(hsl, "color", dot, "color")
 
         g.link(queue, "queue", trail, points.portKey)
+    }
+
+    /// Spectrum bars drawn by an Iterator, and a shape that pulses with the bass.
+    /// Uses the microphone (macOS asks for permission the first time).
+    private static func audio(_ g: Graph) {
+        g.put(ClearPatch.self, 760, 40, ["color": .color(SIMD4(0.02, 0.02, 0.04, 1))])
+        let spectrum = g.put(AudioSpectrumPatch.self, 40, 80, ["bands": .number(32)])
+        let count = g.put(StructureCountPatch.self, 340, 60)
+        let bars = g.put(IteratorPatch.self, 560, 120, name: "Bars")
+        let pulseSize = g.put(MathExpressionPatch.self, 340, 300, ["expression": .string("0.12 + a * 0.45")], name: "Pulse Size")
+        let pulse = g.put(BillboardPatch.self, 760, 300, ["y": .number(0.28), "height": .number(0), "rotation": .number(45),
+                                                         "color": .color(SIMD4(1, 0.3, 0.6, 0.8)), "blending": .number(1)],
+                          name: "Bass Pulse")
+        g.link(spectrum, "spectrum", count, "structure")
+        g.link(count, "count", bars, "iterations")
+        g.link(spectrum, "bass", pulseSize, "a")
+        g.link(pulseSize, "result", pulse, "width")
+
+        let sub = bars.contents
+        let vars = sub.nodes.compactMap { $0 as? IteratorVariablesPatch }.first!
+        let bands = sub.put(PublishedInputPatch.self, 40, 220, name: "Spectrum")
+        bands.portType = .structure
+        let pick = sub.put(StructureIndexMemberPatch.self, 300, 200)
+        let x = sub.put(MathExpressionPatch.self, 300, 40, ["expression": .string("(a - 0.5) * 1.8")], name: "X")
+        let height = sub.put(MathExpressionPatch.self, 540, 200, ["expression": .string("0.01 + a * 0.6")], name: "Height")
+        let y = sub.put(MathExpressionPatch.self, 780, 200, ["expression": .string("-0.5 + a / 2")], name: "Y (grow up)")
+        let width = sub.put(MathExpressionPatch.self, 300, 360, ["expression": .string("1.5 / a")], name: "Width")
+        let hsl = sub.put(HSLColorPatch.self, 300, 480, ["saturation": .number(0.8), "luminosity": .number(0.6)])
+        let bar = sub.put(BillboardPatch.self, 1020, 160, name: "Bar")
+        sub.link(bands, "value", pick, "structure")
+        sub.link(vars, "index", pick, "index")
+        sub.link(vars, "position", x, "a")
+        sub.link(pick, "member", height, "a")
+        sub.link(height, "result", y, "a")
+        sub.link(vars, "count", width, "a")
+        sub.link(vars, "position", hsl, "hue")
+        sub.link(x, "result", bar, "x")
+        sub.link(y, "result", bar, "y")
+        sub.link(width, "result", bar, "width")
+        sub.link(height, "result", bar, "height")
+        sub.link(hsl, "color", bar, "color")
+
+        g.link(spectrum, "spectrum", bars, bands.portKey)
     }
 }

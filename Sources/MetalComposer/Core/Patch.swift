@@ -233,7 +233,7 @@ enum PatchRegistry {
     static let all: [Patch.Type] = [
         // Providers
         PatchTimePatch.self, MousePatch.self, RandomPatch.self, NumberPatch.self,
-        ImageImporterPatch.self, TextImagePatch.self,
+        ImageImporterPatch.self, TextImagePatch.self, AudioInputPatch.self, AudioSpectrumPatch.self,
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,
         SmoothPatch.self, ConditionalPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
