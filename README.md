@@ -2,6 +2,8 @@
 
 Quartz Composer をモダンに作り直すことを目指した、macOS 向けのノードベース・リアルタイムビジュアル環境です。SwiftUI と Metal で書いています。
 
+> **注記**：Apple Inc. とは関係のない、個人による非公式のプロジェクトです。Metal、Quartz Composer、macOS は Apple Inc. の商標です。
+
 ## ビルドと起動
 
 ```bash
@@ -122,3 +124,7 @@ final class MyPatch: Patch {
 - Mesh、Camera、Lighting、Compute Shader パッチ
 - ポート上での値の表示、フルスクリーン表示、録画（ProRes/HEVC への書き出し）
 - Syphon 互換の出力
+
+## ライセンス
+
+[MIT License](LICENSE)
