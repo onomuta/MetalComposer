@@ -62,10 +62,16 @@ final class AppState: ObservableObject {
         exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
     }
 
-    /// ⌘↩: show the patch library and put the cursor in its search field.
+    /// ⌘↩ toggles: opens the patch library with the cursor in its search field, or closes it
+    /// (handing the keyboard back to the graph) when it is already open.
     func findPatch() {
-        showLibrary = true
-        librarySearchRequest += 1
+        if showLibrary {
+            showLibrary = false
+            NSApp.keyWindow?.makeFirstResponder(nil)
+        } else {
+            showLibrary = true
+            librarySearchRequest += 1
+        }
     }
 
     func newComposition() {
@@ -198,29 +204,44 @@ struct ContentView: View {
     @ObservedObject var composition: Composition
     @Environment(\.openWindow) private var openWindow
 
+    // Fixed column widths (remembered between launches); only the editor flexes, so showing or
+    // hiding the library never changes the right column.
+    @AppStorage("libraryWidth") private var libraryWidth = 220.0
+    @AppStorage("rightColumnWidth") private var rightColumnWidth = 460.0
+    private static let editorMinWidth = 320.0
+
     var body: some View {
-        HSplitView {
-            if state.showLibrary {
-                LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
-                            onAddedFromSearch: { state.showLibrary = false })
-                    .frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
-            }
-            GraphEditorView(composition: composition)
-                .frame(minWidth: 420)
-            VSplitView {
-                if state.viewerPoppedOut {
-                    PoppedOutViewerBar()
-                } else {
-                    ViewerPanel(renderer: state.renderer, playback: state.playback) {
-                        state.viewerPoppedOut = true
-                        openWindow(id: "viewer")
-                    }
-                    .frame(minHeight: 240, idealHeight: 380)
+        GeometryReader { geo in
+            let libraryShown = state.showLibrary
+            let usedByLibrary = libraryShown ? libraryWidth + ColumnResizeHandle.width : 0
+            // Shrink the right column only when the window is too narrow to fit it.
+            let rightWidth = min(rightColumnWidth,
+                                 max(300, geo.size.width - usedByLibrary - ColumnResizeHandle.width - Self.editorMinWidth))
+            HStack(spacing: 0) {
+                if libraryShown {
+                    LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
+                                onAddedFromSearch: { state.showLibrary = false })
+                        .frame(width: libraryWidth)
+                    ColumnResizeHandle(width: $libraryWidth, range: 180...420)
                 }
-                InspectorView(composition: composition)
-                    .frame(minHeight: 200)
+                GraphEditorView(composition: composition)
+                    .frame(minWidth: Self.editorMinWidth, maxWidth: .infinity)
+                ColumnResizeHandle(width: $rightColumnWidth, range: 300...900, growsLeftward: true)
+                VSplitView {
+                    if state.viewerPoppedOut {
+                        PoppedOutViewerBar()
+                    } else {
+                        ViewerPanel(renderer: state.renderer, playback: state.playback) {
+                            state.viewerPoppedOut = true
+                            openWindow(id: "viewer")
+                        }
+                        .frame(minHeight: 240, idealHeight: 380)
+                    }
+                    InspectorView(composition: composition)
+                        .frame(minHeight: 200)
+                }
+                .frame(width: rightWidth)
             }
-            .frame(minWidth: 340, idealWidth: 460, maxWidth: 800)
         }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
         .sheet(isPresented: $state.showExport) {
@@ -293,7 +314,7 @@ private struct LibraryCommands: View {
         .keyboardShortcut("v", modifiers: [.command, .option])
         Button(state.showLibrary ? "Hide Patch Library" : "Show Patch Library") { state.showLibrary.toggle() }
             .keyboardShortcut("l", modifiers: [.command, .option])
-        Button("Find Patch…") { state.findPatch() }
+        Button(state.showLibrary ? "Close Patch Library" : "Find Patch…") { state.findPatch() }
             .keyboardShortcut(.return, modifiers: .command)
     }
 }
@@ -307,5 +328,40 @@ private struct UndoCommands: View {
             .keyboardShortcut("z")
         Button(um.canRedo ? "Redo \(um.redoActionName)" : "Redo") { composition.redo() }
             .keyboardShortcut("z", modifiers: [.command, .shift])
+    }
+}
+
+/// A column divider that resizes the column on one side by dragging.
+private struct ColumnResizeHandle: View {
+    static let width: CGFloat = 7
+
+    @Binding var width: Double
+    var range: ClosedRange<Double>
+    /// True when the column is to the right of the handle (dragging left makes it wider).
+    var growsLeftward = false
+
+    @State private var dragStart: Double?
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 1)
+        }
+        .frame(width: Self.width)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            // Global coordinates: the handle itself moves while dragging.
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { g in
+                    let start = dragStart ?? width
+                    dragStart = start
+                    let delta = growsLeftward ? -g.translation.width : g.translation.width
+                    width = min(max(start + delta, range.lowerBound), range.upperBound)
+                }
+                .onEnded { _ in dragStart = nil }
+        )
     }
 }
