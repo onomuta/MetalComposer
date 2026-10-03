@@ -19,6 +19,8 @@ struct PortSpec {
     var options: [String]? = nil
     /// `false` means the value is a setting edited only in the inspector (not connectable).
     var isPort = true
+    /// Internal value that is saved but never shown.
+    var hidden = false
     var multiline = false
     var isFilePath = false
 
@@ -42,6 +44,9 @@ struct PortSpec {
     static func menu(_ key: String, _ name: String, _ options: [String], _ value: Int = 0) -> PortSpec {
         PortSpec(key: key, name: name, type: .number, defaultValue: .number(Double(value)), options: options)
     }
+
+    func setting() -> PortSpec { var s = self; s.isPort = false; return s }
+    func hiddenSetting() -> PortSpec { var s = self; s.isPort = false; s.hidden = true; return s }
 }
 
 /// Resolved input values handed to a patch for one frame.
@@ -61,11 +66,17 @@ struct EvalContext {
     let commandBuffer: MTLCommandBuffer
     let time: Double
     let deltaTime: Double
-    /// Drawable size in pixels.
+    /// Viewer drawable size in pixels.
     let viewportSize: CGSize
     /// Mouse position in composition units (x: -1…1, y: -h/w…h/w).
     let mouse: SIMD2<Float>
     let mouseDown: Bool
+    /// Values of the enclosing macro's published inputs, keyed by port key.
+    var published: [String: Value] = [:]
+    /// Current iteration when evaluated inside an Iterator.
+    var iteration: (index: Int, count: Int)? = nil
+    /// Patches to evaluate even when nothing consumes them (for the inspector).
+    var inspect: Set<UUID> = []
 
     var device: MTLDevice { resources.device }
     var aspect: Float { Float(viewportSize.width / max(viewportSize.height, 1)) }
@@ -74,15 +85,32 @@ struct EvalContext {
 struct RenderContext {
     let encoder: MTLRenderCommandEncoder
     let eval: EvalContext
+    /// Size in pixels of the texture being rendered into.
+    let targetSize: CGSize
     var resources: RenderResources { eval.resources }
+    var aspect: Float { Float(targetSize.width / max(targetSize.height, 1)) }
+}
+
+typealias DrawCommand = (RenderContext) -> Void
+
+/// Result of executing a patch once: its outputs plus any draw calls to replay in layer order.
+struct PatchResult {
+    var outputs: [String: Value] = [:]
+    var commands: [DrawCommand] = []
+}
+
+extension Notification.Name {
+    static let patchStatusChanged = Notification.Name("MetalComposer.patchStatusChanged")
 }
 
 /// Base class of every node. Subclasses override the class-level description
 /// plus `evaluate` (providers/processors) or `render` (consumers).
+/// Patches with dynamic ports (macros, published ports) override the instance-level accessors.
 class Patch: ObservableObject, Identifiable {
     class var typeID: String { "patch" }
     class var title: String { "Patch" }
     class var category: PatchCategory { .processor }
+    class var librarySection: String { category.rawValue }
     class var summary: String { "" }
     class var inputSpecs: [PortSpec] { [] }
     class var outputSpecs: [PortSpec] { [] }
@@ -90,8 +118,9 @@ class Patch: ObservableObject, Identifiable {
     let id: UUID
     var position: CGPoint
     @Published var params: [String: Value] = [:]
+    @Published var customTitle: String?
     @Published private(set) var statusMessage: String?
-    /// Outputs produced during the most recent evaluation (for the inspector).
+    /// Outputs produced during the most recent evaluation (for the inspector and feedback loops).
     var lastOutputs: [String: Value] = [:]
 
     required init(id: UUID = UUID(), position: CGPoint = .zero) {
@@ -104,19 +133,44 @@ class Patch: ObservableObject, Identifiable {
 
     var typeID: String { type(of: self).typeID }
     var title: String { type(of: self).title }
-    var category: PatchCategory { type(of: self).category }
     var summary: String { type(of: self).summary }
+    var category: PatchCategory { type(of: self).category }
     var allInputs: [PortSpec] { type(of: self).inputSpecs }
-    var inputPorts: [PortSpec] { type(of: self).inputSpecs.filter(\.isPort) }
     var outputPorts: [PortSpec] { type(of: self).outputSpecs }
+    var inputPorts: [PortSpec] { allInputs.filter(\.isPort) }
+    /// Child graph for macro-like patches.
+    var subgraph: Graph? { nil }
+
+    var displayTitle: String {
+        if let t = customTitle, !t.isEmpty { return t }
+        return title
+    }
+    var headerTitle: String { displayTitle }
+
+    /// Runs the patch for one frame. Consumers defer their drawing into a command.
+    func execute(_ inputs: Inputs, _ ctx: EvalContext) -> PatchResult {
+        if category == .consumer {
+            return PatchResult(commands: [{ [self] rc in self.render(inputs, rc) }])
+        }
+        return PatchResult(outputs: evaluate(inputs, ctx))
+    }
 
     func evaluate(_ inputs: Inputs, _ ctx: EvalContext) -> [String: Value] { [:] }
     func render(_ inputs: Inputs, _ ctx: RenderContext) {}
+    /// Values seen by a downstream patch that loops back into this one before it has run this frame.
+    func feedbackOutputs(_ ctx: EvalContext) -> [String: Value] { lastOutputs }
     /// Called when playback restarts.
     func reset() {}
 
     func setStatus(_ message: String?) {
-        if message != statusMessage { statusMessage = message }
+        guard message != statusMessage else { return }
+        statusMessage = message
+        NotificationCenter.default.post(name: .patchStatusChanged, object: self)
+    }
+
+    func record() -> NodeRecord {
+        NodeRecord(id: id, type: typeID, x: position.x, y: position.y, name: customTitle,
+                   params: params.filter { !$0.value.isImage }, subgraph: subgraph?.record())
     }
 }
 
@@ -131,6 +185,10 @@ enum PatchRegistry {
         CoreImageFilterPatch.self,
         // Consumers
         ClearPatch.self, SpritePatch.self, ParticleSystemPatch.self, MetalShaderPatch.self,
+        // Macros
+        MacroPatch.self, IteratorPatch.self, RenderInImagePatch.self,
+        PublishedInputPatch.self, PublishedOutputPatch.self, IteratorVariablesPatch.self,
     ]
     static let byID: [String: Patch.Type] = Dictionary(uniqueKeysWithValues: all.map { ($0.typeID, $0) })
+    static let sections = ["Providers", "Processors", "Consumers", "Macros"]
 }

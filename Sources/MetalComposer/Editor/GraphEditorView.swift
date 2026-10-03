@@ -53,10 +53,13 @@ struct GraphEditorView: View {
     @State private var zoom: CGFloat = 1
     @State private var pinchStartZoom: CGFloat?
     @State private var drag: DragMode?
+    @State private var detachedWire = false
     @State private var hovering = false
     @State private var pointer: CGPoint = .zero
     @State private var viewSize: CGSize = .zero
     @State private var scrollMonitor: Any?
+    @State private var lastClick: (id: UUID, time: Date)?
+    @State private var redrawTick = 0
     @FocusState private var focused: Bool
 
     private struct PortHit {
@@ -68,13 +71,18 @@ struct GraphEditorView: View {
 
     private enum DragMode {
         case pan(start: CGSize)
-        case move(id: UUID, grab: CGSize)
+        case move(start: CGPoint, origins: [UUID: CGPoint], moved: Bool, clicked: UUID)
+        case marquee(start: CGPoint, current: CGPoint, base: Set<UUID>)
         case connect(from: PortHit, current: CGPoint)
+        case ignore
     }
+
+    private var graph: Graph { composition.graph }
 
     var body: some View {
         GeometryReader { geo in
             Canvas { ctx, size in
+                _ = redrawTick
                 drawGrid(&ctx, size)
                 var g = ctx
                 g.translateBy(x: offset.width, y: offset.height)
@@ -82,30 +90,40 @@ struct GraphEditorView: View {
                 drawConnections(&g)
                 drawNodes(&g)
                 drawPendingConnection(&g)
+                drawMarquee(&g)
             }
-            .background(Color(white: 0.11))
+            .background(Color(white: composition.path.isEmpty ? 0.11 : 0.085))
             .contentShape(Rectangle())
             .gesture(dragGesture)
             .simultaneousGesture(magnifyGesture)
             .focusable()
             .focusEffectDisabled()
             .focused($focused)
-            .onKeyPress(keys: [.delete, .deleteForward]) { _ in
-                if let id = composition.selection { composition.remove(id) }
+            .onKeyPress(keys: [.delete, .deleteForward]) { _ in composition.deleteSelection(); return .handled }
+            .onKeyPress(.escape) {
+                if !composition.path.isEmpty { composition.exit(toDepth: composition.path.count - 1) }
                 return .handled
             }
+            .onCommand(#selector(NSText.copy(_:))) { composition.copySelection() }
+            .onCommand(#selector(NSText.cut(_:))) { composition.cutSelection() }
+            .onCommand(#selector(NSText.paste(_:))) { composition.paste() }
+            .onCommand(#selector(NSText.selectAll(_:))) { composition.selectAll() }
+            .onCommand(#selector(NSText.delete(_:))) { composition.deleteSelection() }
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let p): hovering = true; pointer = p
                 case .ended: hovering = false
                 }
             }
-            .contextMenu { addPatchMenu }
+            .contextMenu { contextMenu }
+            .overlay(alignment: .topLeading) { breadcrumb }
             .overlay(alignment: .bottomTrailing) { zoomControls }
             .onAppear { viewSize = geo.size; zoomToFit(); installScrollMonitor() }
             .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m) } }
             .onChange(of: geo.size) { _, s in viewSize = s; updateVisibleCenter() }
+            .onChange(of: composition.path) { _, _ in zoomToFit() }
             .onReceive(NotificationCenter.default.publisher(for: .compositionReplaced)) { _ in zoomToFit() }
+            .onReceive(NotificationCenter.default.publisher(for: .patchStatusChanged)) { _ in redrawTick += 1 }
         }
     }
 
@@ -131,7 +149,7 @@ struct GraphEditorView: View {
     // MARK: Hit testing
 
     private func hitPort(_ p: CGPoint) -> PortHit? {
-        for node in composition.nodes.reversed() {
+        for node in graph.nodes.reversed() {
             for (i, spec) in node.outputPorts.enumerated() {
                 let pt = NodeLayout.outputPoint(node, i)
                 if hypot(pt.x - p.x, pt.y - p.y) < NodeLayout.portHitRadius {
@@ -149,11 +167,11 @@ struct GraphEditorView: View {
     }
 
     private func hitNode(_ p: CGPoint) -> Patch? {
-        composition.nodes.last { NodeLayout.frame($0).contains(p) }
+        graph.nodes.last { NodeLayout.frame($0).contains(p) }
     }
 
     private func portPoint(_ ref: PortRef, output: Bool) -> (CGPoint, PortType)? {
-        guard let node = composition.node(ref.node) else { return nil }
+        guard let node = graph.node(ref.node) else { return nil }
         let ports = output ? node.outputPorts : node.inputPorts
         guard let i = ports.firstIndex(where: { $0.key == ref.port }) else { return nil }
         return (output ? NodeLayout.outputPoint(node, i) : NodeLayout.inputPoint(node, i), ports[i].type)
@@ -165,51 +183,100 @@ struct GraphEditorView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 if drag == nil { beginDrag(at: value.startLocation) }
+                let p = toGraph(value.location)
                 switch drag {
                 case .pan(let start):
                     offset = CGSize(width: start.width + value.translation.width,
                                     height: start.height + value.translation.height)
-                case .move(let id, let grab):
-                    let p = toGraph(value.location)
-                    composition.node(id)?.position = CGPoint(x: p.x - grab.width, y: p.y - grab.height)
+                case .move(let start, let origins, var moved, let clicked):
+                    guard moved || hypot(value.translation.width, value.translation.height) > 2 else { return }
+                    if !moved { composition.beginMove(); moved = true }
+                    let dx = p.x - start.x, dy = p.y - start.y
+                    for (id, o) in origins { graph.node(id)?.position = CGPoint(x: o.x + dx, y: o.y + dy) }
+                    drag = .move(start: start, origins: origins, moved: moved, clicked: clicked)
                     composition.touch()
+                case .marquee(let start, _, let base):
+                    drag = .marquee(start: start, current: p, base: base)
+                    let rect = CGRect(x: min(start.x, p.x), y: min(start.y, p.y),
+                                      width: abs(p.x - start.x), height: abs(p.y - start.y))
+                    composition.selection = base.union(graph.nodes.filter { NodeLayout.frame($0).intersects(rect) }.map(\.id))
                 case .connect(let from, _):
-                    drag = .connect(from: from, current: toGraph(value.location))
-                case nil: break
+                    drag = .connect(from: from, current: p)
+                case .ignore, nil:
+                    break
                 }
             }
             .onEnded { value in
-                if case .connect(let from, _) = drag, let target = hitPort(toGraph(value.location)),
-                   target.isOutput != from.isOutput {
-                    if from.isOutput {
-                        composition.connect(from: from.ref, to: target.ref)
-                    } else {
-                        composition.connect(from: target.ref, to: from.ref)
+                switch drag {
+                case .connect(let from, _):
+                    if let target = hitPort(toGraph(value.location)), target.isOutput != from.isOutput {
+                        let (out, inp) = from.isOutput ? (from.ref, target.ref) : (target.ref, from.ref)
+                        // Re-plugging a detached wire belongs to the detach's undo step.
+                        composition.connect(from: out, to: inp, undoable: !detachedWire)
                     }
+                case .move(_, _, let moved, let clicked):
+                    if !moved { handleClick(on: clicked) }
+                case .pan:
+                    updateVisibleCenter()
+                default:
+                    break
                 }
-                if case .pan = drag { updateVisibleCenter() }
                 drag = nil
+                detachedWire = false
             }
     }
 
     private func beginDrag(at screenPoint: CGPoint) {
         focused = true
         let p = toGraph(screenPoint)
+        let mods = NSEvent.modifierFlags
+        let extend = mods.contains(.shift) || mods.contains(.command)
+
         if let port = hitPort(p) {
-            if !port.isOutput, let existing = composition.connection(into: port.ref),
+            if !port.isOutput, let existing = graph.connection(into: port.ref),
                let (pt, type) = portPoint(existing.from, output: true) {
                 // Grabbing a connected input detaches the wire so it can be re-plugged or dropped.
-                composition.disconnect(existing)
+                composition.detach(existing)
+                detachedWire = true
                 drag = .connect(from: PortHit(ref: existing.from, isOutput: true, type: type, point: pt), current: p)
             } else {
                 drag = .connect(from: port, current: p)
             }
         } else if let node = hitNode(p) {
-            composition.selection = node.id
-            drag = .move(id: node.id, grab: CGSize(width: p.x - node.position.x, height: p.y - node.position.y))
-        } else {
-            composition.selection = nil
+            if extend {
+                if composition.selection.contains(node.id) {
+                    composition.selection.remove(node.id)
+                    drag = .ignore
+                    return
+                }
+                composition.selection.insert(node.id)
+            } else if !composition.selection.contains(node.id) {
+                composition.selection = [node.id]
+            }
+            let origins = Dictionary(uniqueKeysWithValues: composition.selectedNodes.map { ($0.id, $0.position) })
+            drag = .move(start: p, origins: origins, moved: false, clicked: node.id)
+        } else if mods.contains(.option) {
             drag = .pan(start: offset)
+        } else {
+            let base = extend ? composition.selection : []
+            composition.selection = base
+            drag = .marquee(start: p, current: p, base: base)
+        }
+    }
+
+    /// A click without movement: collapse the selection to the node, or open a macro on double-click.
+    private func handleClick(on id: UUID) {
+        let now = Date()
+        if let last = lastClick, last.id == id, now.timeIntervalSince(last.time) < 0.35,
+           let node = graph.node(id), node.subgraph != nil {
+            lastClick = nil
+            composition.enter(node)
+            return
+        }
+        lastClick = (id, now)
+        let mods = NSEvent.modifierFlags
+        if !mods.contains(.shift), !mods.contains(.command) {
+            composition.selection = [id]
         }
     }
 
@@ -241,16 +308,49 @@ struct GraphEditorView: View {
 
     // MARK: Menus & overlays
 
-    @ViewBuilder private var addPatchMenu: some View {
-        ForEach(PatchCategory.allCases) { category in
-            Menu(category.rawValue) {
-                ForEach(PatchRegistry.all.filter { $0.category == category }, id: \.typeID) { type in
+    @ViewBuilder private var contextMenu: some View {
+        ForEach(PatchRegistry.sections, id: \.self) { section in
+            Menu(section) {
+                ForEach(PatchRegistry.all.filter { $0.librarySection == section }, id: \.typeID) { type in
                     Button(type.title) {
                         let p = toGraph(pointer)
                         composition.add(type, at: CGPoint(x: p.x - 20, y: p.y - 10))
                     }
                 }
             }
+        }
+        if !composition.selection.isEmpty {
+            Divider()
+            Button("Group into Macro") { composition.groupSelectionIntoMacro() }
+            Button("Duplicate") { composition.duplicateSelection() }
+            Button("Delete") { composition.deleteSelection() }
+        }
+        if let node = composition.singleSelection, node.subgraph != nil {
+            Button("Open \(node.displayTitle)") { composition.enter(node) }
+        }
+    }
+
+    @ViewBuilder private var breadcrumb: some View {
+        let chain = composition.macroChain
+        if !chain.isEmpty {
+            HStack(spacing: 4) {
+                Button("Root") { composition.exit(toDepth: 0) }
+                ForEach(Array(chain.enumerated()), id: \.element.id) { i, macro in
+                    Image(systemName: "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                    if i == chain.count - 1 {
+                        Text(macro.displayTitle).fontWeight(.semibold)
+                    } else {
+                        Button(macro.displayTitle) { composition.exit(toDepth: i + 1) }
+                    }
+                }
+                Text("Esc to go up").font(.caption2).foregroundStyle(.tertiary).padding(.leading, 6)
+            }
+            .buttonStyle(.borderless)
+            .font(.callout)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .padding(10)
         }
     }
 
@@ -269,8 +369,14 @@ struct GraphEditorView: View {
     }
 
     private func zoomToFit() {
-        guard !composition.nodes.isEmpty, viewSize.width > 0 else { return }
-        let bounds = composition.nodes.map(NodeLayout.frame).reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -40, dy: -40)
+        guard viewSize.width > 0 else { return }
+        guard !graph.nodes.isEmpty else {
+            zoom = 1
+            offset = CGSize(width: 40, height: 60)
+            updateVisibleCenter()
+            return
+        }
+        let bounds = graph.nodes.map(NodeLayout.frame).reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -40, dy: -50)
         let z = min(max(min(viewSize.width / bounds.width, viewSize.height / bounds.height), 0.25), 1.5)
         zoom = z
         offset = CGSize(width: (viewSize.width - bounds.width * z) / 2 - bounds.minX * z,
@@ -299,10 +405,25 @@ struct GraphEditorView: View {
         return path
     }
 
+    /// A wire from a node back into itself, routed over the top of the node.
+    private func loopWire(_ a: CGPoint, _ b: CGPoint, top: CGFloat) -> Path {
+        var path = Path()
+        let y = top - 30
+        path.move(to: a)
+        path.addCurve(to: CGPoint(x: (a.x + b.x) / 2, y: y), control1: CGPoint(x: a.x + 60, y: a.y), control2: CGPoint(x: a.x + 60, y: y))
+        path.addCurve(to: b, control1: CGPoint(x: b.x - 60, y: y), control2: CGPoint(x: b.x - 60, y: b.y))
+        return path
+    }
+
     private func drawConnections(_ ctx: inout GraphicsContext) {
-        for c in composition.connections {
+        for c in graph.connections {
             guard let (a, type) = portPoint(c.from, output: true), let (b, _) = portPoint(c.to, output: false) else { continue }
-            let path = wire(a, b)
+            let path: Path
+            if c.from.node == c.to.node, let node = graph.node(c.from.node) {
+                path = loopWire(a, b, top: node.position.y)
+            } else {
+                path = wire(a, b)
+            }
             ctx.stroke(path, with: .color(.black.opacity(0.5)), lineWidth: 4.5)
             ctx.stroke(path, with: .color(type.color), lineWidth: 2)
         }
@@ -314,33 +435,48 @@ struct GraphEditorView: View {
         ctx.stroke(path, with: .color(from.type.color), style: StrokeStyle(lineWidth: 2, dash: [6, 4]))
     }
 
+    private func drawMarquee(_ ctx: inout GraphicsContext) {
+        guard case .marquee(let start, let current, _) = drag else { return }
+        let rect = CGRect(x: min(start.x, current.x), y: min(start.y, current.y),
+                          width: abs(current.x - start.x), height: abs(current.y - start.y))
+        ctx.fill(Path(rect), with: .color(Color.accentColor.opacity(0.12)))
+        ctx.stroke(Path(rect), with: .color(Color.accentColor.opacity(0.8)), lineWidth: 1 / zoom)
+    }
+
     private func drawNodes(_ ctx: inout GraphicsContext) {
-        let connectedInputs = Set(composition.connections.map(\.to))
-        let connectedOutputs = Set(composition.connections.map(\.from))
-        for node in composition.nodes {
+        let connectedInputs = Set(graph.connections.map(\.to))
+        let connectedOutputs = Set(graph.connections.map(\.from))
+        for node in graph.nodes {
             let frame = NodeLayout.frame(node)
-            let selected = composition.selection == node.id
+            let selected = composition.selection.contains(node.id)
+            let category = node.category
+            let isMacro = node.subgraph != nil
             let body = Path(roundedRect: frame, cornerRadius: 7)
 
             ctx.fill(Path(roundedRect: frame.offsetBy(dx: 0, dy: 3), cornerRadius: 7), with: .color(.black.opacity(0.35)))
+            if isMacro {
+                // Stacked look for patches that contain a graph.
+                ctx.fill(Path(roundedRect: frame.offsetBy(dx: 5, dy: -5), cornerRadius: 7), with: .color(Color(white: 0.26)))
+            }
             ctx.fill(body, with: .color(Color(white: 0.19)))
 
             var header = Path()
             header.addRoundedRect(in: CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: NodeLayout.header),
                                   cornerSize: CGSize(width: 7, height: 7), style: .continuous)
             ctx.fill(header, with: .linearGradient(
-                Gradient(colors: [node.category.color.opacity(0.95), node.category.color.opacity(0.7)]),
+                Gradient(colors: [category.color.opacity(0.95), category.color.opacity(0.7)]),
                 startPoint: CGPoint(x: frame.minX, y: frame.minY), endPoint: CGPoint(x: frame.minX, y: frame.minY + NodeLayout.header)))
 
-            ctx.draw(Text(node.title).font(.system(size: 11.5, weight: .semibold)).foregroundColor(.white),
+            let title = (isMacro ? "⧉ " : "") + node.headerTitle
+            ctx.draw(Text(title).font(.system(size: 11.5, weight: .semibold)).foregroundColor(.white),
                      at: CGPoint(x: frame.minX + 10, y: frame.minY + NodeLayout.header / 2), anchor: .leading)
 
-            if let layer = composition.layerIndex(of: node) {
+            if let layer = graph.layerIndex(of: node) {
                 ctx.draw(Text("#\(layer)").font(.system(size: 10, weight: .bold).monospacedDigit()).foregroundColor(.white.opacity(0.75)),
                          at: CGPoint(x: frame.maxX - 10, y: frame.minY + NodeLayout.header / 2), anchor: .trailing)
             }
             if node.statusMessage != nil {
-                let dot = CGRect(x: frame.maxX - (node.category == .consumer ? 38 : 16), y: frame.minY + 8, width: 8, height: 8)
+                let dot = CGRect(x: frame.maxX - (category == .consumer ? 38 : 16), y: frame.minY + 8, width: 8, height: 8)
                 ctx.fill(Path(ellipseIn: dot), with: .color(.red))
             }
 

@@ -6,13 +6,24 @@ struct InspectorView: View {
     @ObservedObject var composition: Composition
 
     var body: some View {
-        if let node = composition.selectedNode {
+        if let node = composition.singleSelection {
             NodeInspector(node: node, composition: composition).id(node.id)
+        } else if composition.selection.count > 1 {
+            VStack(spacing: 10) {
+                Text("\(composition.selection.count) patches selected").font(.headline)
+                HStack {
+                    Button("Group into Macro") { composition.groupSelectionIntoMacro() }
+                    Button("Duplicate") { composition.duplicateSelection() }
+                    Button("Delete", role: .destructive) { composition.deleteSelection() }
+                }
+                Text("⌘G group · ⌘D duplicate · ⌘C / ⌘V copy & paste").font(.caption).foregroundStyle(.tertiary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             VStack(spacing: 8) {
                 Image(systemName: "square.on.square.dashed").font(.largeTitle).foregroundStyle(.tertiary)
                 Text("Select a patch to edit its inputs").foregroundStyle(.secondary)
-                Text("Right-click the canvas or use the library to add patches.\nDrag from an output to an input to connect.")
+                Text("Right-click the canvas or use the library to add patches.\nDrag from an output to an input to connect; drag on empty space to select several.")
                     .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -31,7 +42,13 @@ private struct NodeInspector: View {
                     Text(node.title).font(.headline)
                     Text(node.summary).font(.caption).foregroundStyle(.secondary)
                 }
-                if let layer = composition.layerIndex(of: node) {
+                TextField(node is PublishedPortPatch ? "Port Name" : "Name", text: Binding(
+                    get: { node.customTitle ?? "" },
+                    set: { composition.rename(node, $0) }), prompt: Text(node.title))
+                if node.subgraph != nil {
+                    Button("Open \(node.displayTitle)  (double-click)") { composition.enter(node) }
+                }
+                if let layer = composition.graph.layerIndex(of: node) {
                     LabeledContent("Layer") {
                         HStack {
                             Text("#\(layer)").monospacedDigit()
@@ -48,7 +65,7 @@ private struct NodeInspector: View {
 
             if !node.allInputs.isEmpty {
                 Section("Inputs") {
-                    ForEach(node.allInputs, id: \.key) { spec in
+                    ForEach(node.allInputs.filter { !$0.hidden }, id: \.key) { spec in
                         inputRow(spec)
                     }
                 }
@@ -73,12 +90,12 @@ private struct NodeInspector: View {
 
     @ViewBuilder
     private func inputRow(_ spec: PortSpec) -> some View {
-        if spec.isPort, let conn = composition.connection(into: PortRef(node: node.id, port: spec.key)),
-           let src = composition.node(conn.from.node) {
+        if spec.isPort, let conn = composition.graph.connection(into: PortRef(node: node.id, port: spec.key)),
+           let src = composition.graph.node(conn.from.node) {
             LabeledContent(spec.name) {
                 TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                     VStack(alignment: .trailing, spacing: 0) {
-                        Text("← \(src.title) · \(src.outputPorts.first { $0.key == conn.from.port }?.name ?? conn.from.port)")
+                        Text("← \(src.displayTitle) · \(src.outputPorts.first { $0.key == conn.from.port }?.name ?? conn.from.port)")
                             .font(.caption).foregroundStyle(.secondary)
                         Text(src.lastOutputs[conn.from.port]?.summary ?? "—").monospacedDigit()
                     }
@@ -87,7 +104,7 @@ private struct NodeInspector: View {
         } else if let options = spec.options {
             Picker(spec.name, selection: Binding(
                 get: { Int((node.params[spec.key] ?? spec.defaultValue).number) },
-                set: { node.params[spec.key] = .number(Double($0)) })) {
+                set: { composition.setParam(node, spec.key, .number(Double($0))) })) {
                 ForEach(options.indices, id: \.self) { Text(options[$0]).tag($0) }
             }
         } else {
@@ -96,7 +113,7 @@ private struct NodeInspector: View {
             case .bool:
                 Toggle(spec.name, isOn: Binding(
                     get: { (node.params[spec.key] ?? spec.defaultValue).bool },
-                    set: { node.params[spec.key] = .bool($0) }))
+                    set: { composition.setParam(node, spec.key, .bool($0)) }))
             case .color:
                 ColorPicker(spec.name, selection: colorBinding(spec))
             case .string: stringRow(spec)
@@ -108,7 +125,7 @@ private struct NodeInspector: View {
 
     private func numberBinding(_ spec: PortSpec) -> Binding<Double> {
         Binding(get: { (node.params[spec.key] ?? spec.defaultValue).number },
-                set: { node.params[spec.key] = .number($0) })
+                set: { composition.setParam(node, spec.key, .number($0)) })
     }
 
     @ViewBuilder
@@ -138,13 +155,13 @@ private struct NodeInspector: View {
                 let srgb = cg.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil) ?? cg
                 let comps = srgb.components ?? [1, 1, 1, 1]
                 let rgba = comps.count >= 4 ? comps : [comps[0], comps[0], comps[0], comps.last ?? 1]
-                node.params[spec.key] = .color(SIMD4(Float(rgba[0]), Float(rgba[1]), Float(rgba[2]), Float(rgba[3])))
+                composition.setParam(node, spec.key, .color(SIMD4(Float(rgba[0]), Float(rgba[1]), Float(rgba[2]), Float(rgba[3]))))
             })
     }
 
     private func stringBinding(_ spec: PortSpec) -> Binding<String> {
         Binding(get: { (node.params[spec.key] ?? spec.defaultValue).string },
-                set: { node.params[spec.key] = .string($0) })
+                set: { composition.setParam(node, spec.key, .string($0)) })
     }
 
     @ViewBuilder
@@ -154,7 +171,7 @@ private struct NodeInspector: View {
                 HStack {
                     Text(spec.name)
                     Spacer()
-                    Button("Reset") { node.params[spec.key] = spec.defaultValue }.controlSize(.small)
+                    Button("Reset") { composition.setParam(node, spec.key, spec.defaultValue) }.controlSize(.small)
                 }
                 CodeEditor(text: stringBinding(spec))
                     .frame(minHeight: 260)

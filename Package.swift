@@ -9,6 +9,11 @@ let package = Package(
             name: "MetalComposer",
             path: "Sources/MetalComposer",
             swiftSettings: [.swiftLanguageMode(.v5)]
-        )
+        ),
+        .testTarget(
+            name: "MetalComposerTests",
+            dependencies: ["MetalComposer"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
     ]
 )

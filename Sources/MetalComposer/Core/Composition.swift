@@ -1,180 +1,315 @@
-import Foundation
+import AppKit
 import CoreGraphics
 
-struct PortRef: Codable, Hashable {
-    var node: UUID
-    var port: String
+extension Notification.Name {
+    static let compositionReplaced = Notification.Name("MetalComposer.compositionReplaced")
 }
 
-struct Connection: Codable, Hashable, Identifiable {
-    var id = UUID()
-    var from: PortRef // an output
-    var to: PortRef   // an input
-}
-
-/// The patch graph. Consumers are rendered in the order they appear in `nodes` (their layer order).
+/// The document: a root graph, the editor's position inside nested macros, the selection,
+/// and every undoable edit. All edits go through this class so they can be undone.
 final class Composition: ObservableObject {
-    @Published var nodes: [Patch] = []
-    @Published var connections: [Connection] = []
-    @Published var selection: UUID?
+    let root = Graph()
+    /// IDs of the macros the editor has descended into, outermost first.
+    @Published private(set) var path: [UUID] = []
+    @Published var selection: Set<UUID> = []
     @Published var fileURL: URL?
+    /// The document's own undo stack (text fields keep the window's, for typing).
+    let undoManager = UndoManager()
     /// Visible center of the editor in graph coordinates, used to place new patches.
     var visibleCenter = CGPoint(x: 300, y: 200)
 
-    func node(_ id: UUID?) -> Patch? {
-        guard let id else { return nil }
-        return nodes.first { $0.id == id }
+    static let pasteboardType = NSPasteboard.PasteboardType("dev.metalcomposer.patches")
+
+    func touch() { objectWillChange.send() }
+
+    // MARK: Navigation
+
+    /// Macros from the root down to the graph being edited.
+    var macroChain: [Patch] {
+        var graph = root
+        var chain: [Patch] = []
+        for id in path {
+            guard let macro = graph.node(id), let sub = macro.subgraph else { break }
+            chain.append(macro)
+            graph = sub
+        }
+        return chain
     }
 
-    var selectedNode: Patch? { node(selection) }
+    /// The graph shown in the editor.
+    var graph: Graph { macroChain.last?.subgraph ?? root }
+
+    var selectedNodes: [Patch] { graph.nodes.filter { selection.contains($0.id) } }
+    var singleSelection: Patch? { selection.count == 1 ? selectedNodes.first : nil }
+
+    func enter(_ macro: Patch) {
+        guard macro.subgraph != nil, graph.node(macro.id) != nil else { return }
+        path.append(macro.id)
+        selection = []
+    }
+
+    func exit(toDepth depth: Int) {
+        guard depth < path.count else { return }
+        let leaving = path[depth]
+        path = Array(path.prefix(depth))
+        selection = [leaving]
+    }
+
+    // MARK: Undo
+
+    private var lastCoalesceKey: String?
+    private var lastCheckpoint = Date.distantPast
+
+    /// Records the current state so the next edit can be undone. Repeated edits with the same
+    /// `coalesce` key in quick succession (slider drags, typing) collapse into one undo step.
+    func checkpoint(_ actionName: String, coalesce key: String? = nil) {
+        let um = undoManager
+        guard !um.isUndoing, !um.isRedoing else { return }
+        let now = Date()
+        defer { lastCoalesceKey = key; lastCheckpoint = now }
+        if let key, key == lastCoalesceKey, now.timeIntervalSince(lastCheckpoint) < 1 { return }
+        register(snapshot: root.record(), on: um, name: actionName)
+    }
+
+    private func register(snapshot: GraphRecord, on um: UndoManager, name: String) {
+        um.registerUndo(withTarget: self) { target in
+            let current = target.root.record()
+            target.restore(snapshot)
+            target.register(snapshot: current, on: um, name: name)
+        }
+        um.setActionName(name)
+    }
+
+    /// ⌘Z: undoes typing while a text field is being edited, otherwise the last graph edit.
+    func undo() {
+        if let text = NSApp.keyWindow?.firstResponder as? NSTextView, let um = text.undoManager, um.canUndo {
+            um.undo()
+        } else if undoManager.canUndo {
+            undoManager.undo()
+        }
+        touch() // refresh menu titles once the redo action is registered
+    }
+
+    func redo() {
+        if let text = NSApp.keyWindow?.firstResponder as? NSTextView, let um = text.undoManager, um.canRedo {
+            um.redo()
+        } else if undoManager.canRedo {
+            undoManager.redo()
+        }
+        touch()
+    }
+
+    private func restore(_ record: GraphRecord) {
+        root.load(record)
+        path = Array(path.prefix(macroChain.count))
+        let ids = Set(graph.nodes.map(\.id))
+        selection = selection.intersection(ids)
+        lastCoalesceKey = nil
+        touch()
+    }
 
     // MARK: Editing
 
     @discardableResult
     func add(_ type: Patch.Type, at position: CGPoint) -> Patch {
+        checkpoint("Add \(type.title)")
         let patch = type.init(position: position)
-        nodes.append(patch)
-        selection = patch.id
+        graph.nodes.append(patch)
+        selection = [patch.id]
+        touch()
         return patch
     }
 
-    func remove(_ id: UUID) {
-        nodes.removeAll { $0.id == id }
-        connections.removeAll { $0.from.node == id || $0.to.node == id }
-        if selection == id { selection = nil }
+    func deleteSelection() {
+        guard !selection.isEmpty else { return }
+        checkpoint("Delete")
+        graph.remove(selection)
+        selection = []
+        touch()
     }
 
-    func connection(into input: PortRef) -> Connection? {
-        connections.first { $0.to == input }
+    func connect(from output: PortRef, to input: PortRef, undoable: Bool = true) {
+        guard graph.canConnect(from: output, to: input) else { return }
+        if undoable { checkpoint("Connect") }
+        graph.connect(from: output, to: input)
+        touch()
     }
 
-    @discardableResult
-    func connect(from output: PortRef, to input: PortRef) -> Bool {
-        guard output.node != input.node,
-              let src = node(output.node), let dst = node(input.node),
-              let outSpec = src.outputPorts.first(where: { $0.key == output.port }),
-              let inSpec = dst.inputPorts.first(where: { $0.key == input.port }),
-              PortType.canConnect(from: outSpec.type, to: inSpec.type)
-        else { return false }
-        connections.removeAll { $0.to == input }
-        connections.append(Connection(from: output, to: input))
-        return true
+    /// Removes a wire as the start of re-plugging it; the reconnect is part of the same undo step.
+    func detach(_ connection: Connection) {
+        checkpoint("Change Connection")
+        graph.connections.removeAll { $0.id == connection.id }
+        touch()
     }
 
-    func disconnect(_ connection: Connection) {
-        connections.removeAll { $0.id == connection.id }
+    func beginMove() { checkpoint("Move") }
+
+    func setParam(_ node: Patch, _ key: String, _ value: Value) {
+        checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
+        node.params[key] = value
+        touch() // published ports may change type or name
     }
 
-    var consumers: [Patch] { nodes.filter { $0.category == .consumer } }
-
-    func layerIndex(of patch: Patch) -> Int? {
-        consumers.firstIndex { $0.id == patch.id }.map { $0 + 1 }
+    func rename(_ node: Patch, _ name: String) {
+        checkpoint("Rename", coalesce: "\(node.id)/name")
+        node.customTitle = name.isEmpty ? nil : name
+        touch()
     }
 
-    /// Moves a consumer up (+1) or down (-1) in the rendering order.
-    func moveLayer(_ patch: Patch, by delta: Int) {
-        let layers = consumers
-        guard let i = layers.firstIndex(where: { $0.id == patch.id }) else { return }
-        let j = i + delta
-        guard layers.indices.contains(j),
-              let a = nodes.firstIndex(where: { $0.id == layers[i].id }),
-              let b = nodes.firstIndex(where: { $0.id == layers[j].id }) else { return }
-        nodes.swapAt(a, b)
+    func moveLayer(_ node: Patch, by delta: Int) {
+        checkpoint("Change Layer")
+        graph.moveLayer(node, by: delta)
+        touch()
     }
 
-    func touch() { objectWillChange.send() }
-
-    // MARK: Persistence
-
-    struct Document: Codable {
-        var version = 1
-        var nodes: [NodeRecord]
-        var connections: [Connection]
+    func selectAll() {
+        selection = Set(graph.nodes.map(\.id))
     }
 
-    struct NodeRecord: Codable {
-        var id: UUID
-        var type: String
-        var x: Double
-        var y: Double
-        var params: [String: Value]
+    // MARK: Clipboard
+
+    func copySelection() {
+        guard !selection.isEmpty, let data = try? JSONEncoder().encode(graph.record(only: selection)) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setData(data, forType: Self.pasteboardType)
+    }
+
+    func cutSelection() {
+        copySelection()
+        deleteSelection()
+    }
+
+    func paste() {
+        guard let data = NSPasteboard.general.data(forType: Self.pasteboardType),
+              let record = try? JSONDecoder().decode(GraphRecord.self, from: data) else { return }
+        insert(record, offset: CGSize(width: 30, height: 30), actionName: "Paste")
+    }
+
+    func duplicateSelection() {
+        guard !selection.isEmpty else { return }
+        insert(graph.record(only: selection), offset: CGSize(width: 30, height: 30), actionName: "Duplicate")
+    }
+
+    /// Adds copies of the recorded patches with fresh IDs and selects them.
+    private func insert(_ record: GraphRecord, offset: CGSize, actionName: String) {
+        checkpoint(actionName)
+        var idMap: [UUID: UUID] = [:]
+        var added: [Patch] = []
+        for var nr in record.nodes {
+            let newID = UUID()
+            idMap[nr.id] = newID
+            nr.id = newID
+            nr.x += offset.width
+            nr.y += offset.height
+            guard let patch = Graph.makePatch(nr) else { continue }
+            (patch as? PublishedPortPatch)?.regenerateKey()
+            added.append(patch)
+        }
+        graph.nodes += added
+        for c in record.connections {
+            guard let a = idMap[c.from.node], let b = idMap[c.to.node] else { continue }
+            graph.connections.append(Connection(from: PortRef(node: a, port: c.from.port), to: PortRef(node: b, port: c.to.port)))
+        }
+        selection = Set(added.map(\.id))
+        touch()
+    }
+
+    // MARK: Macros
+
+    /// Moves the selected patches into a new macro. Wires crossing the boundary are routed
+    /// through Macro Input / Macro Output patches so the graph keeps working unchanged.
+    func groupSelectionIntoMacro() {
+        let g = graph
+        let ids = selection
+        let inner = g.nodes.filter { ids.contains($0.id) }
+        guard !inner.isEmpty else { return }
+        checkpoint("Group into Macro")
+
+        let bounds = inner.map { CGRect(origin: $0.position, size: CGSize(width: 180, height: 80)) }
+            .reduce(CGRect.null) { $0.union($1) }
+        let macro = MacroPatch(position: CGPoint(x: bounds.midX - 90, y: bounds.midY - 40))
+        let sub = macro.contents
+        sub.nodes = inner
+
+        var inbound: [PortRef: PublishedInputPatch] = [:]   // keyed by outside source
+        var outbound: [PortRef: PublishedOutputPatch] = [:] // keyed by inside source
+        var outer: [Connection] = []
+        var inY = bounds.minY, outY = bounds.minY
+
+        for c in g.connections {
+            switch (ids.contains(c.from.node), ids.contains(c.to.node)) {
+            case (true, true):
+                sub.connections.append(c)
+            case (false, false):
+                outer.append(c)
+            case (false, true):
+                let proxy: PublishedInputPatch
+                if let existing = inbound[c.from] {
+                    proxy = existing
+                } else {
+                    let spec = g.node(c.to.node)?.inputPorts.first { $0.key == c.to.port }
+                    proxy = PublishedInputPatch(position: CGPoint(x: bounds.minX - 240, y: inY))
+                    inY += 70
+                    proxy.customTitle = spec?.name ?? "Input"
+                    proxy.portType = spec?.type ?? .number
+                    sub.nodes.append(proxy)
+                    inbound[c.from] = proxy
+                    outer.append(Connection(from: c.from, to: PortRef(node: macro.id, port: proxy.portKey)))
+                }
+                sub.connections.append(Connection(from: PortRef(node: proxy.id, port: "value"), to: c.to))
+            case (true, false):
+                let proxy: PublishedOutputPatch
+                if let existing = outbound[c.from] {
+                    proxy = existing
+                } else {
+                    let spec = g.node(c.from.node)?.outputPorts.first { $0.key == c.from.port }
+                    proxy = PublishedOutputPatch(position: CGPoint(x: bounds.maxX + 260, y: outY))
+                    outY += 70
+                    proxy.customTitle = spec?.name ?? "Output"
+                    proxy.portType = spec?.type ?? .number
+                    sub.nodes.append(proxy)
+                    outbound[c.from] = proxy
+                    sub.connections.append(Connection(from: c.from, to: PortRef(node: proxy.id, port: "value")))
+                }
+                outer.append(Connection(from: PortRef(node: macro.id, port: proxy.portKey), to: c.to))
+            }
+        }
+
+        // Keep the macro at the layer position of the first grouped patch.
+        let insertAt = g.nodes.firstIndex { ids.contains($0.id) } ?? g.nodes.count
+        g.nodes.removeAll { ids.contains($0.id) }
+        g.nodes.insert(macro, at: min(insertAt, g.nodes.count))
+        g.connections = outer
+        selection = [macro.id]
+        touch()
+    }
+
+    // MARK: Documents
+
+    func replaceDocument(with record: GraphRecord, url: URL?) {
+        root.load(record)
+        path = []
+        selection = []
+        fileURL = url
+        undoManager.removeAllActions()
+        touch()
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .compositionReplaced, object: self) }
     }
 
     func encoded() throws -> Data {
-        let doc = Document(
-            nodes: nodes.map { n in
-                NodeRecord(id: n.id, type: n.typeID, x: n.position.x, y: n.position.y,
-                           params: n.params.filter { !$0.value.isImage })
-            },
-            connections: connections)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try encoder.encode(doc)
+        return try encoder.encode(root.record())
     }
 
-    func load(_ data: Data) throws {
-        let doc = try JSONDecoder().decode(Document.self, from: data)
-        var loaded: [Patch] = []
-        for record in doc.nodes {
-            guard let type = PatchRegistry.byID[record.type] else { continue }
-            let patch = type.init(id: record.id, position: CGPoint(x: record.x, y: record.y))
-            for (k, v) in record.params where patch.params[k] != nil { patch.params[k] = v }
-            loaded.append(patch)
-        }
-        let ids = Set(loaded.map(\.id))
-        replace(nodes: loaded, connections: doc.connections.filter { ids.contains($0.from.node) && ids.contains($0.to.node) })
+    func load(_ data: Data, url: URL?) throws {
+        replaceDocument(with: try JSONDecoder().decode(GraphRecord.self, from: data), url: url)
     }
 
-    func replace(nodes: [Patch], connections: [Connection]) {
-        selection = nil
-        self.nodes = nodes
-        self.connections = connections
-        DispatchQueue.main.async { NotificationCenter.default.post(name: .compositionReplaced, object: self) }
+    func loadDemo(_ demo: Demo) {
+        let g = Graph()
+        demo.build(into: g)
+        replaceDocument(with: g.record(), url: nil)
     }
-}
-
-// MARK: - Demo
-
-extension Composition {
-    func loadDemo() {
-        fileURL = nil
-        replace(nodes: [], connections: [])
-
-        func put<T: Patch>(_ t: T.Type, _ x: CGFloat, _ y: CGFloat, _ params: [String: Value] = [:]) -> T {
-            let p = t.init(position: CGPoint(x: x, y: y))
-            for (k, v) in params { p.params[k] = v }
-            nodes.append(p)
-            return p
-        }
-        func link(_ a: Patch, _ out: String, _ b: Patch, _ inp: String) {
-            connect(from: PortRef(node: a.id, port: out), to: PortRef(node: b.id, port: inp))
-        }
-
-        let clear = put(ClearPatch.self, 640, 40, ["color": .color(SIMD4(0.02, 0.02, 0.05, 1))])
-        let shader = put(MetalShaderPatch.self, 640, 110)
-        let sprite = put(SpritePatch.self, 640, 300, ["width": .number(1.3), "height": .number(0)])
-        let particles = put(ParticleSystemPatch.self, 640, 520)
-
-        let hueLFO = put(LFOPatch.self, 40, 40, ["type": .number(4), "period": .number(10), "amplitude": .number(0.5), "offset": .number(0.5)])
-        let text = put(TextImagePatch.self, 40, 190, ["text": .string("Metal Composer"), "size": .number(120)])
-        let bob = put(LFOPatch.self, 40, 300, ["period": .number(4), "amplitude": .number(0.06), "offset": .number(0)])
-        let wobble = put(MathExpressionPatch.self, 40, 450, ["expression": .string("sin(t * 1.3) * 3 + a")])
-        let mouse = put(MousePatch.self, 40, 590)
-        let hsl = put(HSLColorPatch.self, 320, 600, ["saturation": .number(0.8), "luminosity": .number(0.6)])
-
-        link(hueLFO, "value", shader, "p2")
-        link(hueLFO, "value", hsl, "hue")
-        link(text, "image", sprite, "image")
-        link(bob, "value", sprite, "y")
-        link(wobble, "result", sprite, "rotation")
-        link(mouse, "x", particles, "x")
-        link(mouse, "y", particles, "y")
-        link(hsl, "color", particles, "color")
-        _ = clear
-        selection = shader.id
-    }
-}
-
-extension Notification.Name {
-    static let compositionReplaced = Notification.Name("MetalComposer.compositionReplaced")
 }

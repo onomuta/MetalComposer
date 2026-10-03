@@ -49,7 +49,7 @@ final class SpritePatch: Patch {
         var h = i.float("height")
         if h <= 0 { h = tex.map { w * Float($0.height) / Float(max($0.width, 1)) } ?? w }
         var u = SpriteUniforms(center: SIMD2(i.float("x"), i.float("y")), size: SIMD2(w, h),
-                               rotation: i.float("rotation") * .pi / 180, aspect: ctx.eval.aspect,
+                               rotation: i.float("rotation") * .pi / 180, aspect: ctx.aspect,
                                color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
         let enc = ctx.encoder
         enc.setRenderPipelineState(i.int("blending") == 1 ? res.spriteAdd : res.spriteOver)
@@ -141,7 +141,7 @@ final class ParticleSystemPatch: Patch {
         else { return }
 
         let tex = i.image("image")
-        var u = ParticleUniforms(aspect: ctx.eval.aspect, color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
+        var u = ParticleUniforms(aspect: ctx.aspect, color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
         let res = ctx.resources
         let enc = ctx.encoder
         enc.setRenderPipelineState(i.int("blending") == 1 ? res.particleAdd : res.particleOver)
@@ -183,7 +183,7 @@ final class MetalShaderPatch: Patch {
         case .success(let p): pipeline = p; setStatus(nil)
         case .failure(let e): setStatus(e.message); return
         }
-        let size = ctx.eval.viewportSize
+        let size = ctx.targetSize
         let m = ctx.eval.mouse
         var u = ShaderUniforms(
             time: Float(ctx.eval.time),

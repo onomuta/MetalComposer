@@ -48,24 +48,18 @@ final class Renderer: NSObject, MTKViewDelegate {
         let clock = playback.tick()
         let ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: clock.time,
                               deltaTime: clock.delta, viewportSize: view.drawableSize,
-                              mouse: mouse, mouseDown: mouseDown)
+                              mouse: mouse, mouseDown: mouseDown, inspect: composition.selection)
 
-        // Phase 1: pull every consumer's inputs (runs providers/processors, may encode compute work).
-        let evaluator = Evaluator(composition: composition, context: ctx)
-        let layers = composition.consumers.map { ($0, evaluator.inputs(for: $0)) }
-        // Keep the inspector live for the selected patch even if nothing consumes it.
-        if let selected = composition.selectedNode, selected.category != .consumer {
-            _ = evaluator.outputs(of: selected)
-        }
+        // Phase 1: execute the graph. Providers/processors run on demand; offscreen work
+        // (Render In Image, Core Image) is encoded into the command buffer right away.
+        let commands = Evaluator(graph: composition.root, context: ctx).drawCommands()
 
-        // Phase 2: render consumers in layer order.
+        // Phase 2: replay the consumers' draw commands into the viewer in layer order.
         pass.colorAttachments[0].loadAction = .clear
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
         guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        let renderCtx = RenderContext(encoder: encoder, eval: ctx)
-        for (patch, inputs) in layers {
-            patch.render(inputs, renderCtx)
-        }
+        let renderCtx = RenderContext(encoder: encoder, eval: ctx, targetSize: view.drawableSize)
+        commands.forEach { $0(renderCtx) }
         encoder.endEncoding()
         commandBuffer.present(drawable)
         commandBuffer.commit()

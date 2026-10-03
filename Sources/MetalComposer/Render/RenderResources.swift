@@ -20,6 +20,7 @@ final class RenderResources {
     let particleAdd: MTLRenderPipelineState
     let sampler: MTLSamplerState
     let whiteTexture: MTLTexture
+    let transparentTexture: MTLTexture
     let textureLoader: MTKTextureLoader
     let ciContext: CIContext
     let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -54,6 +55,9 @@ final class RenderResources {
         whiteTexture = device.makeTexture(descriptor: td)!
         var white: UInt32 = 0xFFFF_FFFF
         whiteTexture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &white, bytesPerRow: 4)
+        transparentTexture = device.makeTexture(descriptor: td)!
+        var clear: UInt32 = 0
+        transparentTexture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &clear, bytesPerRow: 4)
 
         textureLoader = MTKTextureLoader(device: device)
         ciContext = CIContext(mtlDevice: device, options: [.workingColorSpace: colorSpace])

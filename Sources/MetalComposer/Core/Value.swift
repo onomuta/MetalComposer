@@ -3,8 +3,28 @@ import Metal
 import simd
 
 /// The data type carried by a port.
-enum PortType: String, Codable {
+enum PortType: String, Codable, CaseIterable {
     case number, bool, color, string, image
+
+    var displayName: String {
+        switch self {
+        case .number: return "Number"
+        case .bool: return "Boolean"
+        case .color: return "Color"
+        case .string: return "String"
+        case .image: return "Image"
+        }
+    }
+
+    var defaultValue: Value {
+        switch self {
+        case .number: return .number(0)
+        case .bool: return .bool(false)
+        case .color: return .color(.one)
+        case .string: return .string("")
+        case .image: return .image(nil)
+        }
+    }
 
     /// Whether an output of type `from` may feed an input of type `to`.
     static func canConnect(from: PortType, to: PortType) -> Bool {

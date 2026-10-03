@@ -20,19 +20,19 @@ final class AppState: ObservableObject {
         } catch {
             fatalError("Failed to build Metal pipelines: \(error)")
         }
-        playback.onRestart = { [composition] in composition.nodes.forEach { $0.reset() } }
-        composition.loadDemo()
+        playback.onRestart = { [composition] in composition.root.nodes.forEach { $0.reset() } }
+        composition.loadDemo(.basics)
     }
 
     func newComposition() {
-        composition.fileURL = nil
-        composition.replace(nodes: [], connections: [])
-        composition.add(ClearPatch.self, at: CGPoint(x: 400, y: 80))
+        let g = Graph()
+        g.put(ClearPatch.self, 400, 80)
+        composition.replaceDocument(with: g.record(), url: nil)
         playback.restart()
     }
 
-    func loadDemo() {
-        composition.loadDemo()
+    func loadDemo(_ demo: Demo) {
+        composition.loadDemo(demo)
         playback.restart()
     }
 
@@ -41,8 +41,7 @@ final class AppState: ObservableObject {
         panel.allowedContentTypes = [.metalComposition, .json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try composition.load(Data(contentsOf: url))
-            composition.fileURL = url
+            try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
         } catch {
             NSAlert(error: error).runModal()
@@ -94,11 +93,32 @@ struct MetalComposerApp: App {
                 Button("New Composition") { state.newComposition() }.keyboardShortcut("n")
                 Button("Open…") { state.open() }.keyboardShortcut("o")
                 Divider()
-                Button("Load Demo") { state.loadDemo() }
+                Menu("Demos") {
+                    ForEach(Demo.allCases) { demo in
+                        Button(demo.rawValue) { state.loadDemo(demo) }
+                    }
+                }
+            }
+            CommandGroup(replacing: .undoRedo) {
+                UndoCommands(composition: state.composition)
             }
             CommandGroup(replacing: .saveItem) {
                 Button("Save") { state.save() }.keyboardShortcut("s")
                 Button("Save As…") { state.save(as: true) }.keyboardShortcut("s", modifiers: [.command, .shift])
+            }
+            CommandMenu("Patch") {
+                Button("Group into Macro") { state.composition.groupSelectionIntoMacro() }.keyboardShortcut("g")
+                Button("Duplicate") { state.composition.duplicateSelection() }.keyboardShortcut("d")
+                Divider()
+                Button("Open Macro") {
+                    if let node = state.composition.singleSelection { state.composition.enter(node) }
+                }
+                .keyboardShortcut(.downArrow, modifiers: .command)
+                Button("Close Macro") {
+                    let c = state.composition
+                    if !c.path.isEmpty { c.exit(toDepth: c.path.count - 1) }
+                }
+                .keyboardShortcut(.upArrow, modifiers: .command)
             }
         }
     }
@@ -123,5 +143,17 @@ struct ContentView: View {
             .frame(minWidth: 340, idealWidth: 460, maxWidth: 800)
         }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+    }
+}
+
+private struct UndoCommands: View {
+    @ObservedObject var composition: Composition
+
+    var body: some View {
+        let um = composition.undoManager
+        Button(um.canUndo ? "Undo \(um.undoActionName)" : "Undo") { composition.undo() }
+            .keyboardShortcut("z")
+        Button(um.canRedo ? "Redo \(um.redoActionName)" : "Redo") { composition.redo() }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
     }
 }
