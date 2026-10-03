@@ -13,51 +13,108 @@ final class ClearPatch: Patch {
         var color = i.color("color")
         let enc = ctx.encoder
         enc.setRenderPipelineState(ctx.resources.clearPipeline)
+        enc.setDepthStencilState(ctx.resources.depthReset)
         enc.setFragmentBytes(&color, length: MemoryLayout<SIMD4<Float>>.stride, index: 0)
         enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
     }
 }
 
-struct SpriteUniforms {
-    var center: SIMD2<Float>
-    var size: SIMD2<Float>
-    var rotation: Float
-    var aspect: Float
+struct QuadUniforms {
+    var c0, c1, c2, c3: SIMD4<Float> // clip-space corners: bottom-left, bottom-right, top-left, top-right
     var color: SIMD4<Float>
     var hasTexture: Int32
 }
 
-final class SpritePatch: Patch {
-    override class var typeID: String { "sprite" }
-    override class var title: String { "Sprite" }
+/// Unit quad corners in the order the triangle strip expects.
+let quadCorners: [SIMD2<Float>] = [SIMD2(-0.5, -0.5), SIMD2(0.5, -0.5), SIMD2(-0.5, 0.5), SIMD2(0.5, 0.5)]
+
+/// Draws a textured or solid quad from four clip-space corners.
+func drawQuad(_ ctx: RenderContext, corners: [SIMD4<Float>], color: SIMD4<Float>, texture: MTLTexture?,
+              additive: Bool, depthTest: Bool) {
+    let res = ctx.resources
+    var u = QuadUniforms(c0: corners[0], c1: corners[1], c2: corners[2], c3: corners[3],
+                         color: color, hasTexture: texture == nil ? 0 : 1)
+    let enc = ctx.encoder
+    enc.setRenderPipelineState(additive ? res.spriteAdd : res.spriteOver)
+    enc.setDepthStencilState(depthTest ? res.depthReadWrite : res.depthOff)
+    enc.setVertexBytes(&u, length: MemoryLayout<QuadUniforms>.stride, index: 0)
+    enc.setFragmentBytes(&u, length: MemoryLayout<QuadUniforms>.stride, index: 0)
+    enc.setFragmentTexture(texture ?? res.whiteTexture, index: 0)
+    enc.setFragmentSamplerState(res.sampler, index: 0)
+    enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+}
+
+/// Height 0 means "keep the image's aspect ratio" (square without an image).
+private func resolvedSize(_ i: Inputs, _ tex: MTLTexture?) -> SIMD2<Float> {
+    let w = i.float("width")
+    var h = i.float("height")
+    if h <= 0 { h = tex.map { w * Float($0.height) / Float(max($0.width, 1)) } ?? w }
+    return SIMD2(w, h)
+}
+
+/// 2D quad that always faces the viewer. Inside a 3D Transformation only its position moves.
+final class BillboardPatch: Patch {
+    override class var typeID: String { "billboard" }
+    override class var title: String { "Billboard" }
     override class var category: PatchCategory { .consumer }
-    override class var summary: String { "Draws a textured or solid quad. Height 0 keeps the image aspect ratio." }
+    override class var summary: String { "2D image or solid quad that always faces the viewer. Height 0 keeps the image aspect ratio." }
     override class var inputSpecs: [PortSpec] {
         [.bool("enable", "Enable", true),
          .number("x", "X Position", 0, -1...1), .number("y", "Y Position", 0, -1...1),
-         .number("width", "Width", 1, 0...2), .number("height", "Height", 1, 0...2),
+         .number("width", "Width", 1, 0...2), .number("height", "Height (0 = auto)", 0, 0...2),
          .number("rotation", "Rotation (°)", 0, -180...180),
          .color("color", "Color"), .image("image", "Image"),
-         .menu("blending", "Blending", ["Over", "Add"])]
+         .menu("blending", "Blending", ["Over", "Add"]),
+         .menu("depth", "Depth Test", ["Off", "On"], 0).setting()]
     }
 
     override func render(_ i: Inputs, _ ctx: RenderContext) {
         guard i.bool("enable") else { return }
-        let res = ctx.resources
         let tex = i.image("image")
-        let w = i.float("width")
-        var h = i.float("height")
-        if h <= 0 { h = tex.map { w * Float($0.height) / Float(max($0.width, 1)) } ?? w }
-        var u = SpriteUniforms(center: SIMD2(i.float("x"), i.float("y")), size: SIMD2(w, h),
-                               rotation: i.float("rotation") * .pi / 180, aspect: ctx.aspect,
-                               color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
-        let enc = ctx.encoder
-        enc.setRenderPipelineState(i.int("blending") == 1 ? res.spriteAdd : res.spriteOver)
-        enc.setVertexBytes(&u, length: MemoryLayout<SpriteUniforms>.stride, index: 0)
-        enc.setFragmentBytes(&u, length: MemoryLayout<SpriteUniforms>.stride, index: 0)
-        enc.setFragmentTexture(tex ?? res.whiteTexture, index: 0)
-        enc.setFragmentSamplerState(res.sampler, index: 0)
-        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        let size = resolvedSize(i, tex)
+        let angle = i.float("rotation") * .pi / 180
+        let (s, c) = (sin(angle), cos(angle))
+        let center = ctx.modelView * SIMD4(i.float("x"), i.float("y"), 0, 1)
+        let proj = ctx.projection
+        let corners = quadCorners.map { k -> SIMD4<Float> in
+            let p = k * size
+            let r = SIMD2(p.x * c - p.y * s, p.x * s + p.y * c)
+            return proj * SIMD4(center.x + r.x, center.y + r.y, center.z, 1)
+        }
+        drawQuad(ctx, corners: corners, color: i.color("color"), texture: tex,
+                 additive: i.int("blending") == 1, depthTest: i.int("depth") == 1)
+    }
+}
+
+/// Quad placed in 3D space with perspective.
+final class SpritePatch: Patch {
+    override class var typeID: String { "sprite" }
+    override class var title: String { "Sprite" }
+    override class var category: PatchCategory { .consumer }
+    override class var summary: String { "Image or solid quad in 3D space (position and rotation on X/Y/Z). Height 0 keeps the image aspect ratio." }
+    override class var inputSpecs: [PortSpec] {
+        [.bool("enable", "Enable", true),
+         .number("x", "X Position", 0, -1...1), .number("y", "Y Position", 0, -1...1), .number("z", "Z Position", 0, -1...1),
+         .number("rotationX", "X Rotation (°)", 0, -180...180), .number("rotationY", "Y Rotation (°)", 0, -180...180),
+         // "rotation" keeps files saved before 3D support loading unchanged.
+         .number("rotation", "Z Rotation (°)", 0, -180...180),
+         .number("width", "Width", 1, 0...2), .number("height", "Height (0 = auto)", 1, 0...2),
+         .color("color", "Color"), .image("image", "Image"),
+         .menu("blending", "Blending", ["Over", "Add"]),
+         .menu("depth", "Depth Test", ["Off", "On"], 1).setting()]
+    }
+
+    override func render(_ i: Inputs, _ ctx: RenderContext) {
+        guard i.bool("enable") else { return }
+        let tex = i.image("image")
+        let size = resolvedSize(i, tex)
+        let local = simd_float4x4.translation(SIMD3(i.float("x"), i.float("y"), i.float("z")))
+            * simd_float4x4.rotation(degrees: SIMD3(i.float("rotationX"), i.float("rotationY"), i.float("rotation")))
+            * simd_float4x4.scale(SIMD3(size.x, size.y, 1))
+        let mvp = ctx.projection * ctx.modelView * local
+        let corners = quadCorners.map { mvp * SIMD4($0.x, $0.y, 0, 1) }
+        drawQuad(ctx, corners: corners, color: i.color("color"), texture: tex,
+                 additive: i.int("blending") == 1, depthTest: i.int("depth") == 1)
     }
 }
 
@@ -68,7 +125,8 @@ struct ParticleInstance {
 }
 
 struct ParticleUniforms {
-    var aspect: Float
+    var modelView: simd_float4x4
+    var projection: simd_float4x4
     var color: SIMD4<Float>
     var hasTexture: Int32
 }
@@ -141,10 +199,12 @@ final class ParticleSystemPatch: Patch {
         else { return }
 
         let tex = i.image("image")
-        var u = ParticleUniforms(aspect: ctx.aspect, color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
+        var u = ParticleUniforms(modelView: ctx.modelView, projection: ctx.projection,
+                                 color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
         let res = ctx.resources
         let enc = ctx.encoder
         enc.setRenderPipelineState(i.int("blending") == 1 ? res.particleAdd : res.particleOver)
+        enc.setDepthStencilState(res.depthReadOnly)
         enc.setVertexBytes(&u, length: MemoryLayout<ParticleUniforms>.stride, index: 0)
         enc.setVertexBuffer(buffer, offset: 0, index: 1)
         enc.setFragmentBytes(&u, length: MemoryLayout<ParticleUniforms>.stride, index: 0)
@@ -193,6 +253,7 @@ final class MetalShaderPatch: Patch {
             params: SIMD4(i.float("p1"), i.float("p2"), i.float("p3"), i.float("p4")))
         let enc = ctx.encoder
         enc.setRenderPipelineState(pipeline)
+        enc.setDepthStencilState(res.depthOff)
         enc.setFragmentBytes(&u, length: MemoryLayout<ShaderUniforms>.stride, index: 0)
         enc.setFragmentTexture(i.image("image") ?? res.whiteTexture, index: 0)
         enc.setFragmentSamplerState(res.sampler, index: 0)

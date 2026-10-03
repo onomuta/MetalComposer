@@ -9,6 +9,7 @@ struct ShaderCompileError: Error {
 /// Shared GPU objects: pipelines, samplers, texture loader and the live shader cache.
 final class RenderResources {
     static let pixelFormat: MTLPixelFormat = .bgra8Unorm
+    static let depthFormat: MTLPixelFormat = .depth32Float
 
     let device: MTLDevice
     let queue: MTLCommandQueue
@@ -19,6 +20,11 @@ final class RenderResources {
     let particleOver: MTLRenderPipelineState
     let particleAdd: MTLRenderPipelineState
     let sampler: MTLSamplerState
+    /// Depth states: no test, test + write (opaque 3D), test only (translucent), and reset (Clear).
+    let depthOff: MTLDepthStencilState
+    let depthReadWrite: MTLDepthStencilState
+    let depthReadOnly: MTLDepthStencilState
+    let depthReset: MTLDepthStencilState
     let whiteTexture: MTLTexture
     let transparentTexture: MTLTexture
     let textureLoader: MTKTextureLoader
@@ -59,6 +65,18 @@ final class RenderResources {
         var clear: UInt32 = 0
         transparentTexture.replace(region: MTLRegionMake2D(0, 0, 1, 1), mipmapLevel: 0, withBytes: &clear, bytesPerRow: 4)
 
+        func depthState(_ compare: MTLCompareFunction, write: Bool) -> MTLDepthStencilState {
+            let d = MTLDepthStencilDescriptor()
+            d.depthCompareFunction = compare
+            d.isDepthWriteEnabled = write
+            return device.makeDepthStencilState(descriptor: d)!
+        }
+        depthOff = depthState(.always, write: false)
+        // lessEqual lets coplanar 2D layers at z = 0 keep drawing in layer order.
+        depthReadWrite = depthState(.lessEqual, write: true)
+        depthReadOnly = depthState(.lessEqual, write: false)
+        depthReset = depthState(.always, write: true)
+
         textureLoader = MTKTextureLoader(device: device)
         ciContext = CIContext(mtlDevice: device, options: [.workingColorSpace: colorSpace])
     }
@@ -70,6 +88,7 @@ final class RenderResources {
         d.fragmentFunction = library.makeFunction(name: fragment)
         let att = d.colorAttachments[0]!
         att.pixelFormat = pixelFormat
+        d.depthAttachmentPixelFormat = depthFormat
         if blend != .none {
             att.isBlendingEnabled = true
             att.rgbBlendOperation = .add

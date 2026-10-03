@@ -11,7 +11,7 @@ enum ShaderLibrary {
     vertex FSOut fullscreen_vertex(uint vid [[vertex_id]]) {
         float2 p = float2(float((vid << 1) & 2), float(vid & 2));
         FSOut o;
-        o.position = float4(p * 2.0 - 1.0, 0.0, 1.0);
+        o.position = float4(p * 2.0 - 1.0, 1.0, 1.0); // far plane, so Clear resets depth
         o.uv = p;
         return o;
     }
@@ -20,41 +20,40 @@ enum ShaderLibrary {
         return color;
     }
 
-    struct SpriteUniforms {
-        float2 center; float2 size; float rotation; float aspect; float4 color; int hasTexture;
-    };
+    // Sprite and Billboard: the four corners arrive already in clip space (computed on the CPU),
+    // so perspective-correct texturing comes from the rasterizer.
+    struct QuadUniforms { float4 corners[4]; float4 color; int hasTexture; };
     struct SpriteOut { float4 position [[position]]; float2 uv; };
 
-    vertex SpriteOut sprite_vertex(uint vid [[vertex_id]], constant SpriteUniforms& u [[buffer(0)]]) {
-        const float2 corners[4] = { float2(-0.5, -0.5), float2(0.5, -0.5), float2(-0.5, 0.5), float2(0.5, 0.5) };
-        float2 c = corners[vid] * u.size;
-        float s = sin(u.rotation), co = cos(u.rotation);
-        float2 r = float2(c.x * co - c.y * s, c.x * s + c.y * co) + u.center;
+    vertex SpriteOut sprite_vertex(uint vid [[vertex_id]], constant QuadUniforms& u [[buffer(0)]]) {
+        const float2 uvs[4] = { float2(0.0, 1.0), float2(1.0, 1.0), float2(0.0, 0.0), float2(1.0, 0.0) };
         SpriteOut o;
-        o.position = float4(r.x, r.y * u.aspect, 0.0, 1.0);
-        o.uv = float2(corners[vid].x + 0.5, 0.5 - corners[vid].y);
+        o.position = u.corners[vid];
+        o.uv = uvs[vid];
         return o;
     }
 
-    fragment float4 sprite_fragment(SpriteOut in [[stage_in]], constant SpriteUniforms& u [[buffer(0)]],
+    fragment float4 sprite_fragment(SpriteOut in [[stage_in]], constant QuadUniforms& u [[buffer(0)]],
                                     texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) {
         float4 c = u.color;
         if (u.hasTexture) c *= tex.sample(smp, in.uv);
+        if (c.a < 0.004) discard_fragment(); // keep transparent texels out of the depth buffer
         return c;
     }
 
     struct ParticleInstance { float2 position; float size; float alpha; };
-    struct ParticleUniforms { float aspect; float4 color; int hasTexture; };
+    struct ParticleUniforms { float4x4 modelView; float4x4 projection; float4 color; int hasTexture; };
     struct ParticleOut { float4 position [[position]]; float2 uv; float alpha; };
 
+    // Particles are camera-facing: the quad is expanded in view space after the model transform.
     vertex ParticleOut particle_vertex(uint vid [[vertex_id]], uint iid [[instance_id]],
                                        constant ParticleUniforms& u [[buffer(0)]],
                                        const device ParticleInstance* instances [[buffer(1)]]) {
         const float2 corners[4] = { float2(-0.5, -0.5), float2(0.5, -0.5), float2(-0.5, 0.5), float2(0.5, 0.5) };
         ParticleInstance p = instances[iid];
-        float2 r = corners[vid] * p.size + p.position;
+        float4 center = u.modelView * float4(p.position, 0.0, 1.0);
         ParticleOut o;
-        o.position = float4(r.x, r.y * u.aspect, 0.0, 1.0);
+        o.position = u.projection * float4(center.xy + corners[vid] * p.size, center.z, 1.0);
         o.uv = float2(corners[vid].x + 0.5, 0.5 - corners[vid].y);
         o.alpha = p.alpha;
         return o;

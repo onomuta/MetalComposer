@@ -7,6 +7,8 @@ struct MetalViewer: NSViewRepresentable {
     func makeNSView(context: Context) -> ComposerMTKView {
         let view = ComposerMTKView(frame: .zero, device: renderer.resources.device)
         view.colorPixelFormat = RenderResources.pixelFormat
+        view.depthStencilPixelFormat = RenderResources.depthFormat
+        view.clearDepth = 1
         view.preferredFramesPerSecond = 120
         view.renderer = renderer
         view.delegate = renderer

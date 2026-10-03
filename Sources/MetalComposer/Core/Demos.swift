@@ -4,6 +4,7 @@ enum Demo: String, CaseIterable, Identifiable {
     case basics = "Basics"
     case feedback = "Feedback Trails"
     case iterator = "Iterator"
+    case cube = "3D Cube"
 
     var id: String { rawValue }
 
@@ -12,13 +13,14 @@ enum Demo: String, CaseIterable, Identifiable {
         case .basics: Self.basics(g)
         case .feedback: Self.feedback(g)
         case .iterator: Self.iterator(g)
+        case .cube: Self.cube(g)
         }
     }
 
     private static func basics(_ g: Graph) {
         g.put(ClearPatch.self, 640, 40, ["color": .color(SIMD4(0.02, 0.02, 0.05, 1))])
         let shader = g.put(MetalShaderPatch.self, 640, 110)
-        let sprite = g.put(SpritePatch.self, 640, 300, ["width": .number(1.3), "height": .number(0)])
+        let sprite = g.put(BillboardPatch.self, 640, 300, ["width": .number(1.3), "height": .number(0)])
         let particles = g.put(ParticleSystemPatch.self, 640, 520)
 
         let hueLFO = g.put(LFOPatch.self, 40, 40, ["type": .number(4), "period": .number(10), "amplitude": .number(0.5), "offset": .number(0.5)])
@@ -42,7 +44,7 @@ enum Demo: String, CaseIterable, Identifiable {
     private static func feedback(_ g: Graph) {
         g.put(ClearPatch.self, 680, 40, ["color": .color(SIMD4(0, 0, 0, 1))])
         let rim = g.put(RenderInImagePatch.self, 360, 130, ["clear": .color(SIMD4(0, 0, 0, 1))], name: "Feedback")
-        let show = g.put(SpritePatch.self, 680, 120, ["width": .number(2), "height": .number(0)], name: "Show Result")
+        let show = g.put(BillboardPatch.self, 680, 120, ["width": .number(2), "height": .number(0)], name: "Show Result")
         let speed = g.put(NumberPatch.self, 40, 140, ["value": .number(1)], name: "Speed")
         let mouse = g.put(MousePatch.self, 40, 240)
 
@@ -52,7 +54,7 @@ enum Demo: String, CaseIterable, Identifiable {
         let speedIn = sub.put(PublishedInputPatch.self, 40, 300, name: "Speed")
         let mx = sub.put(PublishedInputPatch.self, 40, 400, name: "Mouse X")
         let my = sub.put(PublishedInputPatch.self, 40, 500, name: "Mouse Y")
-        let trail = sub.put(SpritePatch.self, 640, 40, ["width": .number(2.03), "height": .number(0),
+        let trail = sub.put(BillboardPatch.self, 640, 40, ["width": .number(2.03), "height": .number(0),
                                                         "rotation": .number(0.7), "color": .color(SIMD4(1, 1, 1, 0.965))],
                             name: "Previous (zoom + fade)")
         let px = sub.put(MathExpressionPatch.self, 320, 220, ["expression": .string("sin(t * 1.7 * b) * 0.55 + a * 0.3")], name: "Brush X")
@@ -60,7 +62,7 @@ enum Demo: String, CaseIterable, Identifiable {
         let spin = sub.put(MathExpressionPatch.self, 320, 500, ["expression": .string("t * 120 * b")], name: "Spin")
         let hue = sub.put(LFOPatch.self, 40, 140, ["type": .number(4), "period": .number(6), "amplitude": .number(0.5), "offset": .number(0.5)])
         let hsl = sub.put(HSLColorPatch.self, 320, 80, ["saturation": .number(0.9), "luminosity": .number(0.6)])
-        let brush = sub.put(SpritePatch.self, 640, 260, ["width": .number(0.09), "height": .number(0.09)], name: "Brush")
+        let brush = sub.put(BillboardPatch.self, 640, 260, ["width": .number(0.09), "height": .number(0.09)], name: "Brush")
 
         sub.link(previous, "value", trail, "image")
         sub.link(hue, "value", hsl, "hue")
@@ -93,7 +95,7 @@ enum Demo: String, CaseIterable, Identifiable {
         let size = sub.put(MathExpressionPatch.self, 320, 320, ["expression": .string("0.03 + 0.025 * sin(t * 3 + a * 18)")], name: "Size")
         let rot = sub.put(MathExpressionPatch.self, 320, 460, ["expression": .string("t * 60 + a * 360")], name: "Rotation")
         let hsl = sub.put(HSLColorPatch.self, 320, 600, ["saturation": .number(0.85), "luminosity": .number(0.6)])
-        let sprite = sub.put(SpritePatch.self, 640, 160, ["blending": .number(1)])
+        let sprite = sub.put(BillboardPatch.self, 640, 160, ["blending": .number(1)])
 
         for e in [ex, ey, size, rot] { sub.link(vars, "position", e, "a") }
         sub.link(radiusIn, "value", ex, "b")
@@ -107,5 +109,37 @@ enum Demo: String, CaseIterable, Identifiable {
         sub.link(hsl, "color", sprite, "color")
 
         g.link(radius, "value", iter, radiusIn.portKey)
+    }
+
+    /// Six opaque 3D Sprites forming a cube (sorted by the depth buffer) inside a 3D Transformation,
+    /// with a Billboard label that always faces the viewer.
+    private static func cube(_ g: Graph) {
+        g.put(ClearPatch.self, 640, 40, ["color": .color(SIMD4(0.02, 0.02, 0.04, 1))])
+        let cube = g.put(Transform3DPatch.self, 360, 120, name: "Cube")
+        let spinX = g.put(MathExpressionPatch.self, 40, 120, ["expression": .string("t * 37")], name: "Spin X")
+        let spinY = g.put(MathExpressionPatch.self, 40, 260, ["expression": .string("t * 23")], name: "Spin Y")
+        g.link(spinX, "result", cube, "rx")
+        g.link(spinY, "result", cube, "ry")
+
+        let h: Double = 0.3
+        let faces: [(String, [String: Value], SIMD4<Float>)] = [
+            ("Front", ["z": .number(h)], SIMD4(0.95, 0.35, 0.3, 1)),
+            ("Back", ["z": .number(-h)], SIMD4(0.3, 0.55, 0.95, 1)),
+            ("Right", ["x": .number(h), "rotationY": .number(90)], SIMD4(0.35, 0.85, 0.45, 1)),
+            ("Left", ["x": .number(-h), "rotationY": .number(90)], SIMD4(0.95, 0.8, 0.3, 1)),
+            ("Top", ["y": .number(h), "rotationX": .number(90)], SIMD4(0.7, 0.4, 0.95, 1)),
+            ("Bottom", ["y": .number(-h), "rotationX": .number(90)], SIMD4(0.3, 0.85, 0.85, 1)),
+        ]
+        let sub = cube.contents
+        for (i, face) in faces.enumerated() {
+            var params = face.1
+            params["width"] = .number(2 * h)
+            params["height"] = .number(2 * h)
+            params["color"] = .color(face.2)
+            sub.put(SpritePatch.self, CGFloat(40 + (i % 3) * 220), CGFloat(40 + (i / 3) * 280), params, name: face.0)
+        }
+        let label = sub.put(TextImagePatch.self, 40, 600, ["text": .string("Metal"), "size": .number(96)])
+        let billboard = sub.put(BillboardPatch.self, 300, 600, ["width": .number(0.32)], name: "Label (faces viewer)")
+        sub.link(label, "image", billboard, "image")
     }
 }

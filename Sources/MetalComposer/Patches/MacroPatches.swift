@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import Metal
+import simd
 
 // MARK: - Published ports
 
@@ -182,6 +183,7 @@ final class RenderInImagePatch: MacroPatch {
 
     // Two targets, alternated each frame, so the previous frame can be read while drawing the next.
     private var targets: [MTLTexture] = []
+    private var depth: MTLTexture?
     private var current = 0
 
     override func feedbackOutputs(_ ctx: EvalContext) -> [String: Value] {
@@ -204,6 +206,11 @@ final class RenderInImagePatch: MacroPatch {
             desc.usage = [.renderTarget, .shaderRead]
             desc.storageMode = .private
             targets = (0..<2).compactMap { _ in ctx.device.makeTexture(descriptor: desc) }
+            let dd = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: RenderResources.depthFormat,
+                                                              width: w, height: h, mipmapped: false)
+            dd.usage = [.renderTarget]
+            dd.storageMode = .private
+            depth = ctx.device.makeTexture(descriptor: dd)
         }
         guard targets.count == 2 else { return PatchResult(outputs: ["image": .image(nil)]) }
         current ^= 1
@@ -216,6 +223,10 @@ final class RenderInImagePatch: MacroPatch {
         pass.colorAttachments[0].storeAction = .store
         pass.colorAttachments[0].clearColor = MTLClearColor(red: Double(clear.x), green: Double(clear.y),
                                                             blue: Double(clear.z), alpha: Double(clear.w))
+        pass.depthAttachment.texture = depth
+        pass.depthAttachment.loadAction = .clear
+        pass.depthAttachment.storeAction = .dontCare
+        pass.depthAttachment.clearDepth = 1
         guard let encoder = ctx.commandBuffer.makeRenderCommandEncoder(descriptor: pass) else {
             return PatchResult(outputs: ["image": .image(nil)])
         }
@@ -229,6 +240,39 @@ final class RenderInImagePatch: MacroPatch {
     override func reset() {
         super.reset()
         targets = []
+        depth = nil
         lastOutputs = [:]
+    }
+}
+
+// MARK: - 3D Transformation
+
+/// Environment macro: everything rendered inside is translated, rotated and scaled in 3D.
+/// Nested transformations multiply, so they can be stacked to build hierarchies.
+final class Transform3DPatch: MacroPatch {
+    override class var typeID: String { "3d-transformation" }
+    override class var title: String { "3D Transformation" }
+    override class var summary: String { "Moves, rotates and scales everything rendered inside it in 3D." }
+    override class var inputSpecs: [PortSpec] {
+        [.number("tx", "X Translation", 0, -2...2), .number("ty", "Y Translation", 0, -2...2), .number("tz", "Z Translation", 0, -2...2),
+         .number("rx", "X Rotation (°)", 0, -180...180), .number("ry", "Y Rotation (°)", 0, -180...180), .number("rz", "Z Rotation (°)", 0, -180...180),
+         .number("sx", "X Scale", 1, 0...4), .number("sy", "Y Scale", 1, 0...4), .number("sz", "Z Scale", 1, 0...4),
+         .number("ox", "Origin X", 0, -1...1).setting(), .number("oy", "Origin Y", 0, -1...1).setting(),
+         .number("oz", "Origin Z", 0, -1...1).setting()]
+    }
+
+    static func matrix(_ i: Inputs) -> simd_float4x4 {
+        let origin = SIMD3(i.float("ox"), i.float("oy"), i.float("oz"))
+        return simd_float4x4.translation(SIMD3(i.float("tx"), i.float("ty"), i.float("tz")) + origin)
+            * simd_float4x4.rotation(degrees: SIMD3(i.float("rx"), i.float("ry"), i.float("rz")))
+            * simd_float4x4.scale(SIMD3(i.float("sx"), i.float("sy"), i.float("sz")))
+            * simd_float4x4.translation(-origin)
+    }
+
+    override func execute(_ inputs: Inputs, _ ctx: EvalContext) -> PatchResult {
+        var result = super.execute(inputs, ctx)
+        let m = Self.matrix(inputs)
+        result.commands = result.commands.map { command -> DrawCommand in { rc in command(rc.transformed(by: m)) } }
+        return result
     }
 }

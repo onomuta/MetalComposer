@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension PortType {
     var color: Color {
@@ -32,9 +33,15 @@ enum NodeLayout {
     static let portHitRadius: CGFloat = 10
 
     static func frame(_ node: Patch) -> CGRect {
+        if let comment = node as? CommentPatch { return CGRect(origin: node.position, size: comment.size) }
         let rows = max(node.inputPorts.count, node.outputPorts.count, 1)
         return CGRect(x: node.position.x, y: node.position.y, width: width,
                       height: header + CGFloat(rows) * row + footer)
+    }
+
+    static func resizeHandle(_ comment: CommentPatch) -> CGRect {
+        let f = frame(comment)
+        return CGRect(x: f.maxX - 14, y: f.maxY - 14, width: 14, height: 14)
     }
 
     static func inputPoint(_ node: Patch, _ index: Int) -> CGPoint {
@@ -60,6 +67,9 @@ struct GraphEditorView: View {
     @State private var scrollMonitor: Any?
     @State private var lastClick: (id: UUID, time: Date)?
     @State private var redrawTick = 0
+    @State private var dropTargeted = false
+    @State private var hoveredPort: PortHit?
+    @State private var editingComment: UUID?
     @FocusState private var focused: Bool
 
     private struct PortHit {
@@ -74,6 +84,7 @@ struct GraphEditorView: View {
         case move(start: CGPoint, origins: [UUID: CGPoint], moved: Bool, clicked: UUID)
         case marquee(start: CGPoint, current: CGPoint, base: Set<UUID>)
         case connect(from: PortHit, current: CGPoint)
+        case resize(id: UUID, start: CGPoint, origin: CGSize, moved: Bool)
         case ignore
     }
 
@@ -87,6 +98,7 @@ struct GraphEditorView: View {
                 var g = ctx
                 g.translateBy(x: offset.width, y: offset.height)
                 g.scaleBy(x: zoom, y: zoom)
+                drawComments(&g)
                 drawConnections(&g)
                 drawNodes(&g)
                 drawPendingConnection(&g)
@@ -99,23 +111,48 @@ struct GraphEditorView: View {
             .focusable()
             .focusEffectDisabled()
             .focused($focused)
-            .onKeyPress(keys: [.delete, .deleteForward]) { _ in composition.deleteSelection(); return .handled }
             .onKeyPress(.escape) {
-                if !composition.path.isEmpty { composition.exit(toDepth: composition.path.count - 1) }
+                // Escape reaches this handler even while a comment's text view has the keyboard.
+                if editingComment != nil {
+                    editingComment = nil
+                    focused = true
+                    return .handled
+                }
+                guard !composition.path.isEmpty else { return .ignored }
+                composition.exit(toDepth: composition.path.count - 1)
                 return .handled
             }
-            .onCommand(#selector(NSText.copy(_:))) { composition.copySelection() }
-            .onCommand(#selector(NSText.cut(_:))) { composition.cutSelection() }
-            .onCommand(#selector(NSText.paste(_:))) { composition.paste() }
-            .onCommand(#selector(NSText.selectAll(_:))) { composition.selectAll() }
-            .onCommand(#selector(NSText.delete(_:))) { composition.deleteSelection() }
             .onContinuousHover { phase in
                 switch phase {
-                case .active(let p): hovering = true; pointer = p
-                case .ended: hovering = false
+                case .active(let p):
+                    hovering = true
+                    pointer = p
+                    hoveredPort = drag == nil ? hitPort(toGraph(p)) : nil
+                case .ended:
+                    hovering = false
+                    hoveredPort = nil
                 }
             }
             .contextMenu { contextMenu }
+            .dropDestination(for: URL.self) { urls, location in
+                let images = urls.filter { url in
+                    url.isFileURL && (UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) ?? false)
+                }
+                guard !images.isEmpty else { return false }
+                let p = toGraph(location)
+                composition.importImages(images, at: CGPoint(x: p.x - NodeLayout.width / 2, y: p.y - NodeLayout.header / 2))
+                focused = true
+                return true
+            } isTargeted: { dropTargeted = $0 }
+            .overlay {
+                if dropTargeted {
+                    RoundedRectangle(cornerRadius: 6)
+                        .strokeBorder(Color.accentColor, lineWidth: 3)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .topLeading) { commentEditor }
+            .overlay(alignment: .topLeading) { portTooltip }
             .overlay(alignment: .topLeading) { breadcrumb }
             .overlay(alignment: .bottomTrailing) { zoomControls }
             .onAppear { viewSize = geo.size; zoomToFit(); installScrollMonitor() }
@@ -167,7 +204,8 @@ struct GraphEditorView: View {
     }
 
     private func hitNode(_ p: CGPoint) -> Patch? {
-        graph.nodes.last { NodeLayout.frame($0).contains(p) }
+        graph.nodes.last { !($0 is CommentPatch) && NodeLayout.frame($0).contains(p) }
+            ?? graph.nodes.last { $0 is CommentPatch && NodeLayout.frame($0).contains(p) }
     }
 
     private func portPoint(_ ref: PortRef, output: Bool) -> (CGPoint, PortType)? {
@@ -202,6 +240,13 @@ struct GraphEditorView: View {
                     composition.selection = base.union(graph.nodes.filter { NodeLayout.frame($0).intersects(rect) }.map(\.id))
                 case .connect(let from, _):
                     drag = .connect(from: from, current: p)
+                case .resize(let id, let start, let origin, var moved):
+                    guard let comment = graph.node(id) as? CommentPatch else { return }
+                    if !moved { composition.beginResize(); moved = true }
+                    comment.params["width"] = .number(max(CommentPatch.minSize.width, origin.width + p.x - start.x))
+                    comment.params["height"] = .number(max(CommentPatch.minSize.height, origin.height + p.y - start.y))
+                    drag = .resize(id: id, start: start, origin: origin, moved: moved)
+                    composition.touch()
                 case .ignore, nil:
                     break
                 }
@@ -228,11 +273,17 @@ struct GraphEditorView: View {
 
     private func beginDrag(at screenPoint: CGPoint) {
         focused = true
+        editingComment = nil
+        hoveredPort = nil
         let p = toGraph(screenPoint)
         let mods = NSEvent.modifierFlags
         let extend = mods.contains(.shift) || mods.contains(.command)
 
-        if let port = hitPort(p) {
+        if let comment = graph.nodes.reversed().compactMap({ $0 as? CommentPatch })
+            .first(where: { NodeLayout.resizeHandle($0).contains(p) }) {
+            composition.selection = [comment.id]
+            drag = .resize(id: comment.id, start: p, origin: comment.size, moved: false)
+        } else if let port = hitPort(p) {
             if !port.isOutput, let existing = graph.connection(into: port.ref),
                let (pt, type) = portPoint(existing.from, output: true) {
                 // Grabbing a connected input detaches the wire so it can be re-plugged or dropped.
@@ -267,11 +318,18 @@ struct GraphEditorView: View {
     /// A click without movement: collapse the selection to the node, or open a macro on double-click.
     private func handleClick(on id: UUID) {
         let now = Date()
-        if let last = lastClick, last.id == id, now.timeIntervalSince(last.time) < 0.35,
-           let node = graph.node(id), node.subgraph != nil {
-            lastClick = nil
-            composition.enter(node)
-            return
+        if let last = lastClick, last.id == id, now.timeIntervalSince(last.time) < 0.35, let node = graph.node(id) {
+            if node is CommentPatch {
+                lastClick = nil
+                focused = false // let the note's text view take the keyboard
+                editingComment = id
+                return
+            }
+            if node.subgraph != nil {
+                lastClick = nil
+                composition.enter(node)
+                return
+            }
         }
         lastClick = (id, now)
         let mods = NSEvent.modifierFlags
@@ -319,6 +377,10 @@ struct GraphEditorView: View {
                 }
             }
         }
+        Button("Add Comment Here") {
+            let p = toGraph(pointer)
+            composition.addComment(at: p)
+        }
         if !composition.selection.isEmpty {
             Divider()
             Button("Group into Macro") { composition.groupSelectionIntoMacro() }
@@ -327,6 +389,9 @@ struct GraphEditorView: View {
         }
         if let node = composition.singleSelection, node.subgraph != nil {
             Button("Open \(node.displayTitle)") { composition.enter(node) }
+            if composition.canExplode(node) {
+                Button("Explode Macro") { composition.explodeMacro(node) }
+            }
         }
     }
 
@@ -446,7 +511,7 @@ struct GraphEditorView: View {
     private func drawNodes(_ ctx: inout GraphicsContext) {
         let connectedInputs = Set(graph.connections.map(\.to))
         let connectedOutputs = Set(graph.connections.map(\.from))
-        for node in graph.nodes {
+        for node in graph.nodes where !(node is CommentPatch) {
             let frame = NodeLayout.frame(node)
             let selected = composition.selection.contains(node.id)
             let category = node.category
@@ -497,10 +562,179 @@ struct GraphEditorView: View {
         }
     }
 
+    private func drawComments(_ ctx: inout GraphicsContext) {
+        for case let comment as CommentPatch in graph.nodes {
+            let frame = NodeLayout.frame(comment)
+            let rgb = comment.rgb
+            let fill = Color(red: rgb.x, green: rgb.y, blue: rgb.z)
+            let shape = Path(roundedRect: frame, cornerRadius: 4)
+            ctx.fill(Path(roundedRect: frame.offsetBy(dx: 0, dy: 3), cornerRadius: 4), with: .color(.black.opacity(0.3)))
+            ctx.fill(shape, with: .color(fill.opacity(0.92)))
+            if editingComment != comment.id {
+                let text = comment.text.isEmpty ? "Double-click to write a note" : comment.text
+                ctx.draw(Text(text).font(.system(size: 12)).foregroundColor(.black.opacity(comment.text.isEmpty ? 0.35 : 0.85)),
+                         in: frame.insetBy(dx: 9, dy: 8))
+            }
+            // Resize grip.
+            let h = NodeLayout.resizeHandle(comment)
+            var grip = Path()
+            for k in stride(from: CGFloat(4), through: 12, by: 4) {
+                grip.move(to: CGPoint(x: h.maxX - k, y: h.maxY - 2))
+                grip.addLine(to: CGPoint(x: h.maxX - 2, y: h.maxY - k))
+            }
+            ctx.stroke(grip, with: .color(.black.opacity(0.3)), lineWidth: 1)
+            let selected = composition.selection.contains(comment.id)
+            ctx.stroke(shape, with: .color(selected ? Color.accentColor : .black.opacity(0.15)), lineWidth: selected ? 2 : 1)
+        }
+    }
+
+    // MARK: Comment editing & port tooltips
+
+    @ViewBuilder private var commentEditor: some View {
+        if let id = editingComment, let comment = graph.node(id) as? CommentPatch {
+            let size = comment.size
+            NoteEditor(text: Binding(get: { comment.text },
+                                     set: { composition.setParam(comment, "text", .string($0)) }),
+                       onFinish: { editingComment = nil; focused = true })
+                .frame(width: size.width, height: size.height)
+                .scaleEffect(zoom, anchor: .topLeading)
+                .offset(x: offset.width + comment.position.x * zoom, y: offset.height + comment.position.y * zoom)
+        }
+    }
+
+    /// What a port currently carries, and where it comes from.
+    private func currentValue(_ hit: PortHit) -> (value: Value?, source: String?) {
+        guard let node = graph.node(hit.ref.node) else { return (nil, nil) }
+        if hit.isOutput { return (node.lastOutputs[hit.ref.port], nil) }
+        if let c = graph.connection(into: hit.ref), let src = graph.node(c.from.node) {
+            let name = src.outputPorts.first { $0.key == c.from.port }?.name ?? c.from.port
+            return (src.lastOutputs[c.from.port], "from \(src.displayTitle) · \(name)")
+        }
+        let spec = node.inputPorts.first { $0.key == hit.ref.port }
+        return ((node.params[hit.ref.port] ?? spec?.defaultValue)?.coerced(to: hit.type), nil)
+    }
+
+    @ViewBuilder private var portTooltip: some View {
+        if let hit = hoveredPort, drag == nil, let node = graph.node(hit.ref.node) {
+            let name = (hit.isOutput ? node.outputPorts : node.inputPorts).first { $0.key == hit.ref.port }?.name ?? hit.ref.port
+            TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                let current = currentValue(hit)
+                PortValueBubble(name: name, type: hit.type, value: current.value, source: current.source)
+            }
+            .fixedSize()
+            .allowsHitTesting(false)
+            .offset(x: offset.width + hit.point.x * zoom + 10, y: offset.height + hit.point.y * zoom + 12)
+        }
+    }
+
     private func drawPort(_ ctx: inout GraphicsContext, _ p: CGPoint, _ type: PortType, filled: Bool) {
         let r: CGFloat = 4.5
         let circle = Path(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: r * 2, height: r * 2))
         ctx.fill(circle, with: .color(filled ? type.color : Color(white: 0.12)))
         ctx.stroke(circle, with: .color(type.color), lineWidth: 1.5)
+    }
+}
+
+/// QC-style tooltip showing the live value on a port.
+private struct PortValueBubble: View {
+    let name: String
+    let type: PortType
+    let value: Value?
+    let source: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 6) {
+                Circle().fill(type.color).frame(width: 8, height: 8)
+                Text(name).fontWeight(.semibold)
+                Text(type.displayName).foregroundStyle(.secondary)
+            }
+            if let source { Text(source).foregroundStyle(.secondary) }
+            content
+        }
+        .font(.caption)
+        .padding(8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(.white.opacity(0.12)))
+        .shadow(radius: 6, y: 2)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch value {
+        case nil:
+            Text("Not evaluated (nothing uses it)").foregroundStyle(.secondary)
+        case .image(let texture)?:
+            if let texture, let thumb = TexturePreview.thumbnail(texture) {
+                Image(decorative: thumb, scale: 1)
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                Text(verbatim: "\(texture.width) × \(texture.height)").monospacedDigit().foregroundStyle(.secondary)
+            } else {
+                Text("No image").foregroundStyle(.secondary)
+            }
+        case .color(let c)?:
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 3)
+                    .fill(Color(.sRGB, red: Double(c.x), green: Double(c.y), blue: Double(c.z), opacity: Double(c.w)))
+                    .frame(width: 18, height: 18)
+                    .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(.white.opacity(0.3)))
+                Text(value!.summary).monospacedDigit()
+            }
+        case let v?:
+            Text(v.summary).monospacedDigit().lineLimit(6).frame(maxWidth: 260, alignment: .leading)
+        }
+    }
+}
+
+/// Inline text editor for comments. Escape ends editing; a plain SwiftUI TextEditor
+/// can't do this because NSTextView consumes Escape before SwiftUI sees it.
+private struct NoteEditor: NSViewRepresentable {
+    @Binding var text: String
+    var onFinish: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    /// Catches Escape at the key level, before key bindings turn it into completion.
+    final class TextView: NSTextView {
+        var onEscape: (() -> Void)?
+        override func keyDown(with event: NSEvent) {
+            if event.keyCode == 53 { onEscape?() } else { super.keyDown(with: event) }
+        }
+    }
+
+    func makeNSView(context: Context) -> TextView {
+        let tv = TextView()
+        tv.onEscape = onFinish
+        tv.font = .systemFont(ofSize: 12)
+        tv.textColor = NSColor.black.withAlphaComponent(0.85)
+        tv.insertionPointColor = .black
+        tv.drawsBackground = false
+        tv.isRichText = false
+        tv.allowsUndo = true
+        tv.isAutomaticQuoteSubstitutionEnabled = false
+        tv.textContainerInset = NSSize(width: 4, height: 8)
+        tv.string = text
+        tv.delegate = context.coordinator
+        // After SwiftUI has applied its own focus changes for this click.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            tv.window?.makeFirstResponder(tv)
+            tv.setSelectedRange(NSRange(location: (tv.string as NSString).length, length: 0))
+        }
+        return tv
+    }
+
+    func updateNSView(_ tv: TextView, context: Context) {
+        context.coordinator.parent = self
+        tv.onEscape = onFinish
+        if tv.string != text { tv.string = text }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: NoteEditor
+        init(_ parent: NoteEditor) { self.parent = parent }
+
+        func textDidChange(_ notification: Notification) {
+            guard let tv = notification.object as? NSTextView else { return }
+            parent.text = tv.string
+        }
     }
 }

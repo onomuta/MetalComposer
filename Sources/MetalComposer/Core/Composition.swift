@@ -143,6 +143,12 @@ final class Composition: ObservableObject {
     }
 
     func beginMove() { checkpoint("Move") }
+    func beginResize() { checkpoint("Resize Comment") }
+
+    @discardableResult
+    func addComment(at position: CGPoint) -> Patch {
+        add(CommentPatch.self, at: position)
+    }
 
     func setParam(_ node: Patch, _ key: String, _ value: Value) {
         checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
@@ -162,11 +168,39 @@ final class Composition: ObservableObject {
         touch()
     }
 
+    /// Adds one Image Importer per file, stacked downward from `position`, as a single undo step.
+    func importImages(_ urls: [URL], at position: CGPoint) {
+        guard !urls.isEmpty else { return }
+        checkpoint(urls.count == 1 ? "Import Image" : "Import Images")
+        var added: [Patch] = []
+        for (i, url) in urls.enumerated() {
+            let patch = ImageImporterPatch(position: CGPoint(x: position.x, y: position.y + CGFloat(i) * 70))
+            patch.params["path"] = .string(url.path)
+            patch.customTitle = url.deletingPathExtension().lastPathComponent
+            added.append(patch)
+        }
+        graph.nodes += added
+        selection = Set(added.map(\.id))
+        touch()
+    }
+
     func selectAll() {
         selection = Set(graph.nodes.map(\.id))
     }
 
     // MARK: Clipboard
+
+    /// True while a text field or text view has the keyboard; edit commands then belong to the text.
+    static var isEditingText: Bool { NSApp.keyWindow?.firstResponder is NSText }
+
+    /// Runs an Edit-menu command on the graph, or forwards it to the focused text.
+    func perform(_ textAction: Selector, graph graphAction: () -> Void) {
+        if Self.isEditingText {
+            NSApp.sendAction(textAction, to: nil, from: nil)
+        } else {
+            graphAction()
+        }
+    }
 
     func copySelection() {
         guard !selection.isEmpty, let data = try? JSONEncoder().encode(graph.record(only: selection)) else { return }
@@ -282,6 +316,68 @@ final class Composition: ObservableObject {
         g.nodes.insert(macro, at: min(insertAt, g.nodes.count))
         g.connections = outer
         selection = [macro.id]
+        touch()
+    }
+
+    /// Only plain macros can be exploded; Iterator, Render In Image and 3D Transformation
+    /// change how their contents run, so flattening them would change the result.
+    func canExplode(_ node: Patch?) -> Bool {
+        guard let node else { return false }
+        return type(of: node) == MacroPatch.self
+    }
+
+    /// The inverse of Group into Macro: moves the macro's patches into the current graph and
+    /// rewires everything that went through its Macro Input / Macro Output patches.
+    func explodeMacro(_ macro: Patch) {
+        guard canExplode(macro), let macro = macro as? MacroPatch, let index = graph.nodes.firstIndex(where: { $0.id == macro.id }) else { return }
+        checkpoint("Explode Macro")
+        let g = graph
+        let sub = macro.contents
+        let inner = sub.nodes.filter { !($0 is PublishedPortPatch) }
+
+        // Place the contents where the macro was.
+        let bounds = inner.map(NodeLayout.frame).reduce(CGRect.null) { $0.union($1) }
+        if !bounds.isNull {
+            let dx = macro.position.x - bounds.minX, dy = macro.position.y - bounds.minY
+            for n in inner { n.position = CGPoint(x: n.position.x + dx, y: n.position.y + dy) }
+        }
+
+        func port(_ proxyID: UUID) -> PublishedPortPatch? { sub.node(proxyID) as? PublishedPortPatch }
+        func macroPort(_ proxy: PublishedPortPatch) -> PortRef { PortRef(node: macro.id, port: proxy.portKey) }
+
+        var wires: [PortRef: Connection] = [:] // one wire per input
+        for c in g.connections where c.from.node != macro.id && c.to.node != macro.id { wires[c.to] = c }
+        var constants: [(PortRef, Value)] = []
+
+        for c in sub.connections {
+            // Where the value really comes from: an inner output, the wire into the macro, or the macro's own value.
+            var source: PortRef? = c.from
+            var constant: Value?
+            if let input = port(c.from.node) as? PublishedInputPatch {
+                source = g.connection(into: macroPort(input))?.from
+                if source == nil { constant = macro.params[input.portKey] ?? input.portType.defaultValue }
+            }
+            // Where it goes: an inner input, or every wire leaving the macro's matching output.
+            let targets: [PortRef]
+            if let output = port(c.to.node) as? PublishedOutputPatch {
+                targets = g.connections.filter { $0.from == macroPort(output) }.map(\.to)
+            } else {
+                targets = [c.to]
+            }
+            for t in targets {
+                if let source, source.node != macro.id {
+                    wires[t] = Connection(from: source, to: t)
+                } else if let constant {
+                    constants.append((t, constant))
+                }
+            }
+        }
+
+        g.nodes.remove(at: index)
+        g.nodes.insert(contentsOf: inner, at: index)
+        g.connections = Array(wires.values)
+        for (ref, value) in constants where wires[ref] == nil { g.node(ref.node)?.params[ref.port] = value }
+        selection = Set(inner.map(\.id))
         touch()
     }
 

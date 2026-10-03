@@ -46,7 +46,12 @@ private struct NodeInspector: View {
                     get: { node.customTitle ?? "" },
                     set: { composition.rename(node, $0) }), prompt: Text(node.title))
                 if node.subgraph != nil {
-                    Button("Open \(node.displayTitle)  (double-click)") { composition.enter(node) }
+                    HStack {
+                        Button("Open \(node.displayTitle)  (double-click)") { composition.enter(node) }
+                        if composition.canExplode(node) {
+                            Button("Explode") { composition.explodeMacro(node) }.help("Move the contents out of the macro (⇧⌘G)")
+                        }
+                    }
                 }
                 if let layer = composition.graph.layerIndex(of: node) {
                     LabeledContent("Layer") {

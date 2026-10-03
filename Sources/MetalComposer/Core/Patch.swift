@@ -1,5 +1,6 @@
 import Foundation
 import Metal
+import simd
 import CoreGraphics
 
 enum PatchCategory: String, CaseIterable, Identifiable {
@@ -87,8 +88,18 @@ struct RenderContext {
     let eval: EvalContext
     /// Size in pixels of the texture being rendered into.
     let targetSize: CGSize
+    /// Model transform accumulated from enclosing 3D Transformation patches.
+    var transform = matrix_identity_float4x4
     var resources: RenderResources { eval.resources }
     var aspect: Float { Float(targetSize.width / max(targetSize.height, 1)) }
+    var projection: simd_float4x4 { Camera.projection(aspect: aspect) }
+    var modelView: simd_float4x4 { Camera.view * transform }
+
+    func transformed(by m: simd_float4x4) -> RenderContext {
+        var c = self
+        c.transform = transform * m
+        return c
+    }
 }
 
 typealias DrawCommand = (RenderContext) -> Void
@@ -184,11 +195,13 @@ enum PatchRegistry {
         SmoothPatch.self, ConditionalPatch.self, RGBColorPatch.self, HSLColorPatch.self,
         CoreImageFilterPatch.self,
         // Consumers
-        ClearPatch.self, SpritePatch.self, ParticleSystemPatch.self, MetalShaderPatch.self,
+        ClearPatch.self, BillboardPatch.self, SpritePatch.self, ParticleSystemPatch.self, MetalShaderPatch.self,
         // Macros
-        MacroPatch.self, IteratorPatch.self, RenderInImagePatch.self,
+        MacroPatch.self, IteratorPatch.self, RenderInImagePatch.self, Transform3DPatch.self,
         PublishedInputPatch.self, PublishedOutputPatch.self, IteratorVariablesPatch.self,
+        // Utility
+        CommentPatch.self,
     ]
     static let byID: [String: Patch.Type] = Dictionary(uniqueKeysWithValues: all.map { ($0.typeID, $0) })
-    static let sections = ["Providers", "Processors", "Consumers", "Macros"]
+    static let sections = ["Providers", "Processors", "Consumers", "Macros", "Utility"]
 }

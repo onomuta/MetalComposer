@@ -74,4 +74,17 @@ final class GraphTests: XCTestCase {
         XCTAssertThrowsError(try MathExpression("foo(1)"))
         XCTAssertThrowsError(try MathExpression("1 +"))
     }
+
+    func testImportImagesAddsImportersAsOneUndoStep() {
+        let c = Composition()
+        let urls = [URL(fileURLWithPath: "/tmp/a.png"), URL(fileURLWithPath: "/tmp/b.jpg")]
+        c.importImages(urls, at: CGPoint(x: 10, y: 20))
+        let importers = c.root.nodes.compactMap { $0 as? ImageImporterPatch }
+        XCTAssertEqual(importers.map { $0.params["path"]?.string }, ["/tmp/a.png", "/tmp/b.jpg"])
+        XCTAssertEqual(importers.map(\.displayTitle), ["a", "b"])
+        XCTAssertEqual(importers.first?.position, CGPoint(x: 10, y: 20))
+        XCTAssertEqual(c.selection, Set(importers.map(\.id)))
+        c.undoManager.undo()
+        XCTAssertTrue(c.root.nodes.isEmpty)
+    }
 }

@@ -11,6 +11,10 @@ final class AppState: ObservableObject {
     let composition = Composition()
     let playback = Playback()
     let renderer: Renderer
+    @Published var showLibrary = true
+    /// Incremented to ask the library to focus its search field.
+    @Published var librarySearchRequest = 0
+    private var keyMonitor: Any?
 
     init() {
         guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is not supported on this Mac") }
@@ -22,6 +26,27 @@ final class AppState: ObservableObject {
         }
         playback.onRestart = { [composition] in composition.root.nodes.forEach { $0.reset() } }
         composition.loadDemo(.basics)
+        installDeleteKey()
+    }
+
+    /// Delete / Forward Delete remove the selected patches unless text is being edited.
+    /// Handled here rather than as a menu shortcut so it never steals Backspace from text input
+    /// (including Japanese IME composition).
+    private func installDeleteKey() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self, event.keyCode == 51 || event.keyCode == 117,
+                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
+                  let window = NSApp.keyWindow, window === NSApp.mainWindow, window.attachedSheet == nil,
+                  !Composition.isEditingText, !self.composition.selection.isEmpty else { return event }
+            self.composition.deleteSelection()
+            return nil
+        }
+    }
+
+    /// ⌘↩: show the patch library and put the cursor in its search field.
+    func findPatch() {
+        showLibrary = true
+        librarySearchRequest += 1
     }
 
     func newComposition() {
@@ -102,13 +127,31 @@ struct MetalComposerApp: App {
             CommandGroup(replacing: .undoRedo) {
                 UndoCommands(composition: state.composition)
             }
+            CommandGroup(replacing: .pasteboard) {
+                let c = state.composition
+                Button("Cut") { c.perform(#selector(NSText.cut(_:))) { c.cutSelection() } }.keyboardShortcut("x")
+                Button("Copy") { c.perform(#selector(NSText.copy(_:))) { c.copySelection() } }.keyboardShortcut("c")
+                Button("Paste") { c.perform(#selector(NSText.paste(_:))) { c.paste() } }.keyboardShortcut("v")
+                Button("Duplicate") { c.duplicateSelection() }.keyboardShortcut("d")
+                Button("Delete") { c.perform(#selector(NSText.delete(_:))) { c.deleteSelection() } }
+                Button("Select All") { c.perform(#selector(NSText.selectAll(_:))) { c.selectAll() } }.keyboardShortcut("a")
+            }
+            CommandGroup(before: .toolbar) {
+                LibraryCommands(state: state)
+                Divider()
+            }
             CommandGroup(replacing: .saveItem) {
                 Button("Save") { state.save() }.keyboardShortcut("s")
                 Button("Save As…") { state.save(as: true) }.keyboardShortcut("s", modifiers: [.command, .shift])
             }
             CommandMenu("Patch") {
                 Button("Group into Macro") { state.composition.groupSelectionIntoMacro() }.keyboardShortcut("g")
-                Button("Duplicate") { state.composition.duplicateSelection() }.keyboardShortcut("d")
+                Button("Explode Macro") {
+                    if let node = state.composition.singleSelection { state.composition.explodeMacro(node) }
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+                Button("Add Comment") { state.composition.addComment(at: state.composition.visibleCenter) }
+                    .keyboardShortcut("c", modifiers: [.command, .option])
                 Divider()
                 Button("Open Macro") {
                     if let node = state.composition.singleSelection { state.composition.enter(node) }
@@ -125,13 +168,15 @@ struct MetalComposerApp: App {
 }
 
 struct ContentView: View {
-    let state: AppState
+    @ObservedObject var state: AppState
     @ObservedObject var composition: Composition
 
     var body: some View {
         HSplitView {
-            LibraryView(composition: composition)
-                .frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
+            if state.showLibrary {
+                LibraryView(composition: composition, searchRequest: state.librarySearchRequest)
+                    .frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
+            }
             GraphEditorView(composition: composition)
                 .frame(minWidth: 420)
             VSplitView {
@@ -143,6 +188,23 @@ struct ContentView: View {
             .frame(minWidth: 340, idealWidth: 460, maxWidth: 800)
         }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button { state.showLibrary.toggle() } label: { Image(systemName: "sidebar.left") }
+                    .help(state.showLibrary ? "Hide Patch Library (⌥⌘L)" : "Show Patch Library (⌥⌘L)")
+            }
+        }
+    }
+}
+
+private struct LibraryCommands: View {
+    @ObservedObject var state: AppState
+
+    var body: some View {
+        Button(state.showLibrary ? "Hide Patch Library" : "Show Patch Library") { state.showLibrary.toggle() }
+            .keyboardShortcut("l", modifiers: [.command, .option])
+        Button("Find Patch…") { state.findPatch() }
+            .keyboardShortcut(.return, modifiers: .command)
     }
 }
 
