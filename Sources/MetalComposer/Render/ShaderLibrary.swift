@@ -41,7 +41,7 @@ enum ShaderLibrary {
         return c;
     }
 
-    struct ParticleInstance { float2 position; float size; float alpha; };
+    struct ParticleInstance { float2 position; float z; float size; float alpha; };
     struct ParticleUniforms { float4x4 modelView; float4x4 projection; float4 color; int hasTexture; };
     struct ParticleOut { float4 position [[position]]; float2 uv; float alpha; };
 
@@ -51,7 +51,7 @@ enum ShaderLibrary {
                                        const device ParticleInstance* instances [[buffer(1)]]) {
         const float2 corners[4] = { float2(-0.5, -0.5), float2(0.5, -0.5), float2(-0.5, 0.5), float2(0.5, 0.5) };
         ParticleInstance p = instances[iid];
-        float4 center = u.modelView * float4(p.position, 0.0, 1.0);
+        float4 center = u.modelView * float4(p.position, p.z, 1.0);
         ParticleOut o;
         o.position = u.projection * float4(center.xy + corners[vid] * p.size, center.z, 1.0);
         o.uv = float2(corners[vid].x + 0.5, 0.5 - corners[vid].y);

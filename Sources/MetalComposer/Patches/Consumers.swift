@@ -118,8 +118,10 @@ final class SpritePatch: Patch {
     }
 }
 
+/// Matches `ParticleInstance` in ShaderLibrary (24-byte stride).
 struct ParticleInstance {
     var position: SIMD2<Float>
+    var z: Float
     var size: Float
     var alpha: Float
 }
@@ -138,7 +140,7 @@ final class ParticleSystemPatch: Patch {
     override class var summary: String { "Emits, simulates and draws particles (GPU instanced)." }
     override class var inputSpecs: [PortSpec] {
         [.bool("enable", "Enable", true),
-         .position("x", "X Position"), .position("y", "Y Position"),
+         .position("x", "X Position"), .position("y", "Y Position"), .position("z", "Z Position"),
          .number("count", "Count", 600, 1...2000).limited(1...20000),
          .number("lifetime", "Lifetime", 2, 0.1...10).limited(min: 0.01),
          .number("speed", "Speed", 0.6, 0...3).limited(min: 0), .angle("direction", "Direction (°)", 90),
@@ -151,6 +153,8 @@ final class ParticleSystemPatch: Patch {
     private struct Particle {
         var position: SIMD2<Float>
         var velocity: SIMD2<Float>
+        /// Depth at emission; particles keep it, so a moving emitter leaves trails in depth.
+        var z: Float
         var age: Float
         var life: Float
     }
@@ -169,6 +173,7 @@ final class ParticleSystemPatch: Patch {
         let count = min(max(1, i.int("count")), 20000) // inputs can be wired to anything
         let life = max(0.05, i.float("lifetime"))
         let origin = SIMD2(i.float("x"), i.float("y"))
+        let originZ = i.float("z")
         let speed = i.float("speed"), gravity = i.float("gravity")
         let direction = i.float("direction") * .pi / 180, spread = i.float("spread") * .pi / 180
 
@@ -177,7 +182,7 @@ final class ParticleSystemPatch: Patch {
             spawnBudget -= 1
             let angle = direction + (Float.random(in: -0.5...0.5)) * spread
             let v = SIMD2(cos(angle), sin(angle)) * speed * Float.random(in: 0.4...1)
-            particles.append(Particle(position: origin, velocity: v, age: 0, life: life * Float.random(in: 0.6...1)))
+            particles.append(Particle(position: origin, velocity: v, z: originZ, age: 0, life: life * Float.random(in: 0.6...1)))
         }
         if particles.count >= count { spawnBudget = 0 }
 
@@ -191,7 +196,7 @@ final class ParticleSystemPatch: Patch {
             p.velocity.y += gravity * dt
             p.position += p.velocity * dt
             let k = p.age / p.life
-            instances.append(ParticleInstance(position: p.position, size: baseSize * (1 - 0.6 * k), alpha: 1 - k))
+            instances.append(ParticleInstance(position: p.position, z: p.z, size: baseSize * (1 - 0.6 * k), alpha: 1 - k))
             return p
         }
         guard !instances.isEmpty,
