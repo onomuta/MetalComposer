@@ -33,7 +33,7 @@ final class RandomPatch: Patch {
     override class var summary: String { "Random value that changes a given number of times per second." }
     override class var inputSpecs: [PortSpec] {
         [.number("min", "Min", 0), .number("max", "Max", 1),
-         .number("rate", "Changes / sec", 2, 0...60), .number("seed", "Seed", 0),
+         .number("rate", "Changes / sec", 2, 0...20).limited(min: 0), .number("seed", "Seed", 0),
          .bool("smooth", "Smooth", true)]
     }
     override class var outputSpecs: [PortSpec] { [.number("value", "Value")] }

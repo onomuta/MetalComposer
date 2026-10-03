@@ -44,7 +44,7 @@ final class TextImagePatch: Patch {
     override class var category: PatchCategory { .provider }
     override class var summary: String { "Renders a string into an image (white, tint it with Sprite color)." }
     override class var inputSpecs: [PortSpec] {
-        [.string("text", "String", "Hello"), .number("size", "Font Size", 64, 8...300),
+        [.string("text", "String", "Hello"), .number("size", "Font Size", 64, 8...200).limited(1...2000),
          .menu("weight", "Weight", ["Regular", "Medium", "Bold", "Heavy", "Monospaced"], 2)]
     }
     override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
@@ -106,7 +106,7 @@ final class CoreImageFilterPatch: Patch {
     override class var summary: String { "Applies a Core Image filter on the GPU." }
     static let filters = ["Gaussian Blur", "Pixellate", "Bloom", "Color Invert", "Sepia Tone", "Edges", "Vignette", "Comic"]
     override class var inputSpecs: [PortSpec] {
-        [.image("image", "Image"), .menu("filter", "Filter", filters), .number("amount", "Amount", 10, 0...100)]
+        [.image("image", "Image"), .menu("filter", "Filter", filters), .number("amount", "Amount", 10, 0...100).limited(min: 0)]
     }
     override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
 

@@ -7,7 +7,7 @@ final class LFOPatch: Patch {
     override class var summary: String { "Low frequency oscillator driven by patch time." }
     override class var inputSpecs: [PortSpec] {
         [.menu("type", "Type", ["Sine", "Cosine", "Triangle", "Square", "Sawtooth"]),
-         .number("period", "Period", 1, 0.01...20), .number("phase", "Phase", 0, 0...1),
+         .number("period", "Period", 1, 0.1...10).limited(min: 0.001), .number("phase", "Phase", 0, 0...1),
          .number("amplitude", "Amplitude", 0.5), .number("offset", "Offset", 0.5)]
     }
     override class var outputSpecs: [PortSpec] { [.number("value", "Value")] }
@@ -34,7 +34,7 @@ final class InterpolationPatch: Patch {
     override class var summary: String { "Animates from a start to an end value over time with easing." }
     override class var inputSpecs: [PortSpec] {
         [.number("start", "Start", 0), .number("end", "End", 1),
-         .number("duration", "Duration", 1, 0.01...20),
+         .number("duration", "Duration", 1, 0.1...10).limited(min: 0.001),
          .menu("repeat", "Repeat", ["None", "Loop", "Mirrored Loop"], 1),
          .menu("easing", "Easing", ["Linear", "Ease In", "Ease Out", "Ease In Out", "Exponential Out", "Back Out", "Bounce"], 3)]
     }
@@ -128,7 +128,7 @@ final class SmoothPatch: Patch {
     override class var title: String { "Smooth" }
     override class var summary: String { "Exponentially smooths a changing value." }
     override class var inputSpecs: [PortSpec] {
-        [.number("value", "Value", 0), .number("smoothing", "Smoothing (s)", 0.25, 0...3)]
+        [.number("value", "Value", 0), .number("smoothing", "Smoothing (s)", 0.25, 0...3).limited(min: 0)]
     }
     override class var outputSpecs: [PortSpec] { [.number("value", "Value")] }
 
@@ -155,7 +155,7 @@ final class ConditionalPatch: Patch {
     override class var inputSpecs: [PortSpec] {
         [.number("a", "First Value", 0),
          .menu("op", "Test", ["Is Equal", "Is Not Equal", "Is Greater Than", "Is Lower Than", "Is ≥", "Is ≤"]),
-         .number("b", "Second Value", 0), .number("tolerance", "Tolerance", 0)]
+         .number("b", "Second Value", 0), .number("tolerance", "Tolerance", 0).limited(min: 0)]
     }
     override class var outputSpecs: [PortSpec] { [.bool("result", "Result")] }
 
@@ -194,8 +194,9 @@ final class HSLColorPatch: Patch {
     override class var title: String { "HSL Color" }
     override class var summary: String { "Builds a color from hue, saturation and luminosity." }
     override class var inputSpecs: [PortSpec] {
-        [.number("hue", "Hue", 0, 0...1), .number("saturation", "Saturation", 1, 0...1),
-         .number("luminosity", "Luminosity", 0.5, 0...1), .number("alpha", "Alpha", 1, 0...1)]
+        [.number("hue", "Hue", 0, 0...1), // wraps around, so no limit
+         .number("saturation", "Saturation", 1, 0...1).limited(0...1),
+         .number("luminosity", "Luminosity", 0.5, 0...1).limited(0...1), .number("alpha", "Alpha", 1, 0...1).limited(0...1)]
     }
     override class var outputSpecs: [PortSpec] { [.color("color", "Color")] }
 

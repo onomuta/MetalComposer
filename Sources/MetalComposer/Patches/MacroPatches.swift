@@ -126,7 +126,7 @@ final class IteratorPatch: MacroPatch {
     override class var typeID: String { "iterator" }
     override class var title: String { "Iterator" }
     override class var summary: String { "Runs its contents N times per frame. Use Iterator Variables inside for index/position." }
-    override class var inputSpecs: [PortSpec] { [.number("iterations", "Iterations", 8, 0...200)] }
+    override class var inputSpecs: [PortSpec] { [.number("iterations", "Iterations", 8, 0...100).limited(0...2000)] }
 
     required init(id: UUID = UUID(), position: CGPoint = .zero) {
         super.init(id: id, position: position)
@@ -173,7 +173,8 @@ final class RenderInImagePatch: MacroPatch {
     override class var title: String { "Render In Image" }
     override class var summary: String { "Renders its contents offscreen and outputs the image. Loop the output back in for feedback." }
     override class var inputSpecs: [PortSpec] {
-        [.number("width", "Width (0 = viewer)", 0, 0...4096), .number("height", "Height (0 = viewer)", 0, 0...4096),
+        [.number("width", "Width (0 = viewer)", 0, 0...2048).limited(0...8192),
+         .number("height", "Height (0 = viewer)", 0, 0...2048).limited(0...8192),
          .color("clear", "Clear Color", SIMD4(0, 0, 0, 0))]
     }
     override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
@@ -254,11 +255,11 @@ final class Transform3DPatch: MacroPatch {
     override class var title: String { "3D Transformation" }
     override class var summary: String { "Moves, rotates and scales everything rendered inside it in 3D." }
     override class var inputSpecs: [PortSpec] {
-        [.number("tx", "X Translation", 0, -2...2), .number("ty", "Y Translation", 0, -2...2), .number("tz", "Z Translation", 0, -2...2),
-         .number("rx", "X Rotation (°)", 0, -180...180), .number("ry", "Y Rotation (°)", 0, -180...180), .number("rz", "Z Rotation (°)", 0, -180...180),
-         .number("sx", "X Scale", 1, 0...4), .number("sy", "Y Scale", 1, 0...4), .number("sz", "Z Scale", 1, 0...4),
-         .number("ox", "Origin X", 0, -1...1).setting(), .number("oy", "Origin Y", 0, -1...1).setting(),
-         .number("oz", "Origin Z", 0, -1...1).setting()]
+        [.position("tx", "X Translation"), .position("ty", "Y Translation"), .position("tz", "Z Translation"),
+         .angle("rx", "X Rotation (°)"), .angle("ry", "Y Rotation (°)"), .angle("rz", "Z Rotation (°)"),
+         .number("sx", "X Scale", 1, 0...2), .number("sy", "Y Scale", 1, 0...2), .number("sz", "Z Scale", 1, 0...2), // negative mirrors
+         .position("ox", "Origin X").setting(), .position("oy", "Origin Y").setting(),
+         .position("oz", "Origin Z").setting()]
     }
 
     static func matrix(_ i: Inputs) -> simd_float4x4 {

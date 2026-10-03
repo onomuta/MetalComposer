@@ -60,9 +60,9 @@ final class BillboardPatch: Patch {
     override class var summary: String { "2D image or solid quad that always faces the viewer. Height 0 keeps the image aspect ratio." }
     override class var inputSpecs: [PortSpec] {
         [.bool("enable", "Enable", true),
-         .number("x", "X Position", 0, -1...1), .number("y", "Y Position", 0, -1...1),
-         .number("width", "Width", 1, 0...2), .number("height", "Height (0 = auto)", 0, 0...2),
-         .number("rotation", "Rotation (°)", 0, -180...180),
+         .position("x", "X Position"), .position("y", "Y Position"),
+         .number("width", "Width", 1, 0...2).limited(min: 0), .number("height", "Height (0 = auto)", 0, 0...2).limited(min: 0),
+         .angle("rotation", "Rotation (°)"),
          .color("color", "Color"), .image("image", "Image"),
          .menu("blending", "Blending", ["Over", "Add"]),
          .menu("depth", "Depth Test", ["Off", "On"], 0).setting()]
@@ -94,11 +94,11 @@ final class SpritePatch: Patch {
     override class var summary: String { "Image or solid quad in 3D space (position and rotation on X/Y/Z). Height 0 keeps the image aspect ratio." }
     override class var inputSpecs: [PortSpec] {
         [.bool("enable", "Enable", true),
-         .number("x", "X Position", 0, -1...1), .number("y", "Y Position", 0, -1...1), .number("z", "Z Position", 0, -1...1),
-         .number("rotationX", "X Rotation (°)", 0, -180...180), .number("rotationY", "Y Rotation (°)", 0, -180...180),
+         .position("x", "X Position"), .position("y", "Y Position"), .position("z", "Z Position"),
+         .angle("rotationX", "X Rotation (°)"), .angle("rotationY", "Y Rotation (°)"),
          // "rotation" keeps files saved before 3D support loading unchanged.
-         .number("rotation", "Z Rotation (°)", 0, -180...180),
-         .number("width", "Width", 1, 0...2), .number("height", "Height (0 = auto)", 1, 0...2),
+         .angle("rotation", "Z Rotation (°)"),
+         .number("width", "Width", 1, 0...2).limited(min: 0), .number("height", "Height (0 = auto)", 1, 0...2).limited(min: 0),
          .color("color", "Color"), .image("image", "Image"),
          .menu("blending", "Blending", ["Over", "Add"]),
          .menu("depth", "Depth Test", ["Off", "On"], 1).setting()]
@@ -138,11 +138,12 @@ final class ParticleSystemPatch: Patch {
     override class var summary: String { "Emits, simulates and draws particles (GPU instanced)." }
     override class var inputSpecs: [PortSpec] {
         [.bool("enable", "Enable", true),
-         .number("x", "X Position", 0, -1...1), .number("y", "Y Position", 0, -1...1),
-         .number("count", "Count", 600, 1...5000), .number("lifetime", "Lifetime", 2, 0.05...10),
-         .number("speed", "Speed", 0.6, 0...3), .number("direction", "Direction (°)", 90, -180...180),
-         .number("spread", "Spread (°)", 360, 0...360), .number("gravity", "Gravity", -0.4, -3...3),
-         .number("size", "Size", 0.05, 0.001...0.5),
+         .position("x", "X Position"), .position("y", "Y Position"),
+         .number("count", "Count", 600, 1...2000).limited(1...20000),
+         .number("lifetime", "Lifetime", 2, 0.1...10).limited(min: 0.01),
+         .number("speed", "Speed", 0.6, 0...3).limited(min: 0), .angle("direction", "Direction (°)", 90),
+         .number("spread", "Spread (°)", 360, 0...360).limited(0...360), .number("gravity", "Gravity", -0.4, -3...3),
+         .number("size", "Size", 0.05, 0...0.3).limited(min: 0),
          .color("color", "Color", SIMD4(1, 0.6, 0.2, 1)), .image("image", "Image"),
          .menu("blending", "Blending", ["Over", "Add"], 1)]
     }
@@ -165,7 +166,7 @@ final class ParticleSystemPatch: Patch {
     override func render(_ i: Inputs, _ ctx: RenderContext) {
         guard i.bool("enable") else { return }
         let dt = Float(min(ctx.eval.deltaTime, 0.1))
-        let count = max(1, i.int("count"))
+        let count = min(max(1, i.int("count")), 20000) // inputs can be wired to anything
         let life = max(0.05, i.float("lifetime"))
         let origin = SIMD2(i.float("x"), i.float("y"))
         let speed = i.float("speed"), gravity = i.float("gravity")

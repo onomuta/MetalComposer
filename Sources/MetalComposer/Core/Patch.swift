@@ -16,7 +16,12 @@ struct PortSpec {
     var name: String
     var type: PortType
     var defaultValue: Value
+    /// Suggested range for the slider and knob. It never restricts the value; use `limits` for that.
     var range: ClosedRange<Double>? = nil
+    /// Hard bounds the editor keeps the value within (e.g. a count can't go below 1).
+    var limits: ClosedRange<Double>? = nil
+    /// Change per point when dragging a knob that has no suggested range.
+    var step: Double? = nil
     var options: [String]? = nil
     /// `false` means the value is a setting edited only in the inspector (not connectable).
     var isPort = true
@@ -42,11 +47,33 @@ struct PortSpec {
     static func image(_ key: String, _ name: String) -> PortSpec {
         PortSpec(key: key, name: name, type: .image, defaultValue: .image(nil))
     }
+    /// A coordinate: no range (things move off-screen), knob step 0.005 per point.
+    static func position(_ key: String, _ name: String, _ value: Double = 0) -> PortSpec {
+        var s = number(key, name, value)
+        s.step = 0.005
+        return s
+    }
+
+    /// An angle in degrees: no range (it can spin any number of turns), knob step 1° per point.
+    static func angle(_ key: String, _ name: String, _ value: Double = 0) -> PortSpec {
+        var s = number(key, name, value)
+        s.step = 1
+        return s
+    }
+
     static func menu(_ key: String, _ name: String, _ options: [String], _ value: Int = 0) -> PortSpec {
         PortSpec(key: key, name: name, type: .number, defaultValue: .number(Double(value)), options: options)
     }
 
     func setting() -> PortSpec { var s = self; s.isPort = false; return s }
+    func limited(_ bounds: ClosedRange<Double>) -> PortSpec { var s = self; s.limits = bounds; return s }
+    func limited(min: Double) -> PortSpec { limited(min...Double.infinity) }
+
+    /// Applies the hard limits, if any.
+    func clamped(_ v: Double) -> Double {
+        guard let limits else { return v }
+        return Swift.min(Swift.max(v, limits.lowerBound), limits.upperBound)
+    }
     func hiddenSetting() -> PortSpec { var s = self; s.isPort = false; s.hidden = true; return s }
 }
 

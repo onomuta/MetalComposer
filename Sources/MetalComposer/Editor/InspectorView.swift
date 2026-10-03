@@ -130,7 +130,7 @@ private struct NodeInspector: View {
 
     private func numberBinding(_ spec: PortSpec) -> Binding<Double> {
         Binding(get: { (node.params[spec.key] ?? spec.defaultValue).number },
-                set: { composition.setParam(node, spec.key, .number($0)) })
+                set: { composition.setParam(node, spec.key, .number(spec.clamped($0))) })
     }
 
     @ViewBuilder
@@ -146,6 +146,8 @@ private struct NodeInspector: View {
                 TextField("", value: numberBinding(spec), format: .number.precision(.fractionLength(0...4)))
                     .multilineTextAlignment(.trailing)
                     .frame(width: 70)
+                Knob(value: numberBinding(spec), range: spec.range, limits: spec.limits, step: spec.step,
+                     defaultValue: spec.defaultValue.number)
             }
         }
     }
