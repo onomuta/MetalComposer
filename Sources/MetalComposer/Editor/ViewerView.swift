@@ -21,6 +21,9 @@ struct MetalViewer: NSViewRepresentable {
 struct ViewerPanel: View {
     let renderer: Renderer
     @ObservedObject var playback: Playback
+    /// True when shown in its own window.
+    var isPoppedOut = false
+    var onTogglePopOut: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,7 +39,10 @@ struct ViewerPanel: View {
                     Text(String(format: "%.1f s", playback.time)).monospacedDigit().foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("Viewer").font(.caption).foregroundStyle(.tertiary)
+                Button(action: onTogglePopOut) {
+                    Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
+                }
+                .help(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 10)

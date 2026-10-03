@@ -12,6 +12,13 @@ final class AppState: ObservableObject {
     let playback = Playback()
     let renderer: Renderer
     @Published var showLibrary = true
+    @Published var showExport = false
+    /// The viewer lives in its own window. Only one viewer renders at a time: rendering twice per
+    /// frame would advance time and stateful patches (particles, queues…) twice as fast.
+    @Published var viewerPoppedOut = false
+    /// Bumped each time the viewer moves, so it gets a fresh Metal view instead of a reused one.
+    @Published var viewerGeneration = 0
+    let exporter = MovieExporter()
     /// Incremented to ask the library to focus its search field.
     @Published var librarySearchRequest = 0
     private var keyMonitor: Any?
@@ -27,6 +34,7 @@ final class AppState: ObservableObject {
         playback.onRestart = { [composition] in composition.root.nodes.forEach { $0.reset() } }
         composition.loadDemo(.basics)
         installDeleteKey()
+        exporter.onBusyChange = { [renderer] busy in renderer.isSuspended = busy }
     }
 
     /// Delete / Forward Delete remove the selected patches unless text is being edited.
@@ -41,6 +49,17 @@ final class AppState: ObservableObject {
             self.composition.deleteSelection()
             return nil
         }
+    }
+
+    /// Asks where to save, then renders the composition to a movie with the sheet's settings.
+    func exportMovie() {
+        let codec = exporter.settings.codec
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [codec.fileType == .mp4 ? .mpeg4Movie : .quickTimeMovie]
+        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer"
+        panel.nameFieldStringValue = "\(name).\(codec.fileExtension)"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
     }
 
     /// ⌘↩: show the patch library and put the cursor in its search field.
@@ -113,6 +132,11 @@ struct MetalComposerApp: App {
                 .frame(minWidth: 1100, minHeight: 680)
         }
         .defaultSize(width: 1500, height: 900)
+
+        Window("Viewer", id: "viewer") {
+            ViewerWindow(state: state)
+        }
+        .defaultSize(width: 960, height: 540)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("New Composition") { state.newComposition() }.keyboardShortcut("n")
@@ -143,6 +167,8 @@ struct MetalComposerApp: App {
             CommandGroup(replacing: .saveItem) {
                 Button("Save") { state.save() }.keyboardShortcut("s")
                 Button("Save As…") { state.save(as: true) }.keyboardShortcut("s", modifiers: [.command, .shift])
+                Divider()
+                Button("Export Movie…") { state.showExport = true }.keyboardShortcut("e", modifiers: [.command, .shift])
             }
             CommandMenu("Patch") {
                 Button("Group into Macro") { state.composition.groupSelectionIntoMacro() }.keyboardShortcut("g")
@@ -170,24 +196,37 @@ struct MetalComposerApp: App {
 struct ContentView: View {
     @ObservedObject var state: AppState
     @ObservedObject var composition: Composition
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         HSplitView {
             if state.showLibrary {
-                LibraryView(composition: composition, searchRequest: state.librarySearchRequest)
+                LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
+                            onAddedFromSearch: { state.showLibrary = false })
                     .frame(minWidth: 190, idealWidth: 220, maxWidth: 300)
             }
             GraphEditorView(composition: composition)
                 .frame(minWidth: 420)
             VSplitView {
-                ViewerPanel(renderer: state.renderer, playback: state.playback)
+                if state.viewerPoppedOut {
+                    PoppedOutViewerBar()
+                } else {
+                    ViewerPanel(renderer: state.renderer, playback: state.playback) {
+                        state.viewerPoppedOut = true
+                        openWindow(id: "viewer")
+                    }
                     .frame(minHeight: 240, idealHeight: 380)
+                }
                 InspectorView(composition: composition)
                     .frame(minHeight: 200)
             }
             .frame(minWidth: 340, idealWidth: 460, maxWidth: 800)
         }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        .sheet(isPresented: $state.showExport) {
+            ExportMovieView(exporter: state.exporter) { state.exportMovie() }
+                .interactiveDismissDisabled(state.exporter.isExporting)
+        }
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button { state.showLibrary.toggle() } label: { Image(systemName: "sidebar.left") }
@@ -197,10 +236,61 @@ struct ContentView: View {
     }
 }
 
-private struct LibraryCommands: View {
+/// The viewer in its own resizable window (use the green button or ⌃⌘F for full screen).
+private struct ViewerWindow: View {
     @ObservedObject var state: AppState
+    @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
+        ViewerPanel(renderer: state.renderer, playback: state.playback, isPoppedOut: true) {
+            dismissWindow(id: "viewer")
+        }
+        .id(state.viewerGeneration)
+        .frame(minWidth: 320, minHeight: 200)
+        .onAppear {
+            state.viewerPoppedOut = true
+            state.viewerGeneration += 1
+        }
+        .onDisappear {
+            state.viewerPoppedOut = false
+            state.viewerGeneration += 1
+        }
+    }
+}
+
+/// Stands in for the viewer in the main window while it is popped out.
+private struct PoppedOutViewerBar: View {
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        HStack {
+            Image(systemName: "macwindow").foregroundStyle(.secondary)
+            Text("The viewer is in its own window.").foregroundStyle(.secondary)
+            Spacer()
+            Button("Bring Back") { dismissWindow(id: "viewer") }
+        }
+        .font(.callout)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxHeight: 40)
+    }
+}
+
+private struct LibraryCommands: View {
+    @ObservedObject var state: AppState
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+
+    var body: some View {
+        Button(state.viewerPoppedOut ? "Bring Back Viewer" : "Pop Out Viewer") {
+            if state.viewerPoppedOut {
+                dismissWindow(id: "viewer")
+            } else {
+                state.viewerPoppedOut = true
+                openWindow(id: "viewer")
+            }
+        }
+        .keyboardShortcut("v", modifiers: [.command, .option])
         Button(state.showLibrary ? "Hide Patch Library" : "Show Patch Library") { state.showLibrary.toggle() }
             .keyboardShortcut("l", modifiers: [.command, .option])
         Button("Find Patch…") { state.findPatch() }

@@ -5,6 +5,8 @@ struct LibraryView: View {
     @ObservedObject var composition: Composition
     /// Changes whenever ⌘↩ asks for the search field.
     var searchRequest: Int
+    /// Called after Return adds the highlighted patch (the window closes the library).
+    var onAddedFromSearch: () -> Void = {}
 
     @State private var search = ""
     @State private var highlighted = 0
@@ -106,6 +108,7 @@ struct LibraryView: View {
         guard results.indices.contains(highlighted) else { return }
         add(results[highlighted])
         finishSearch()
+        onAddedFromSearch()
     }
 
     private func finishSearch() {

@@ -40,8 +40,12 @@ final class Renderer: NSObject, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    /// Set while a movie export is running so the GPU isn't shared with the live preview.
+    var isSuspended = false
+
     func draw(in view: MTKView) {
-        guard let pass = view.currentRenderPassDescriptor,
+        guard !isSuspended,
+              let pass = view.currentRenderPassDescriptor,
               let drawable = view.currentDrawable,
               let commandBuffer = resources.queue.makeCommandBuffer() else { return }
 
@@ -49,20 +53,25 @@ final class Renderer: NSObject, MTKViewDelegate {
         let ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: clock.time,
                               deltaTime: clock.delta, viewportSize: view.drawableSize,
                               mouse: mouse, mouseDown: mouseDown, inspect: composition.selection)
-
-        // Phase 1: execute the graph. Providers/processors run on demand; offscreen work
-        // (Render In Image, Core Image) is encoded into the command buffer right away.
-        let commands = Evaluator(graph: composition.root, context: ctx).drawCommands()
-
-        // Phase 2: replay the consumers' draw commands into the viewer in layer order.
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
-        guard let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
-        let renderCtx = RenderContext(encoder: encoder, eval: ctx, targetSize: view.drawableSize)
-        commands.forEach { $0(renderCtx) }
-        encoder.endEncoding()
+        Self.encodeFrame(graph: composition.root, context: ctx, pass: pass, targetSize: view.drawableSize)
         commandBuffer.present(drawable)
         commandBuffer.commit()
+    }
+
+    /// Renders one frame of `graph` into the pass's attachments. Shared by the viewer and movie export.
+    static func encodeFrame(graph: Graph, context ctx: EvalContext, pass: MTLRenderPassDescriptor,
+                            targetSize: CGSize, clearAlpha: Double = 1) {
+        // Phase 1: execute the graph. Providers/processors run on demand; offscreen work
+        // (Render In Image, Core Image, Queue copies) is encoded into the command buffer right away.
+        let commands = Evaluator(graph: graph, context: ctx).drawCommands()
+
+        // Phase 2: replay the consumers' draw commands in layer order.
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: clearAlpha)
+        guard let encoder = ctx.commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+        let renderCtx = RenderContext(encoder: encoder, eval: ctx, targetSize: targetSize)
+        commands.forEach { $0(renderCtx) }
+        encoder.endEncoding()
     }
 }
 
@@ -71,6 +80,13 @@ final class ComposerMTKView: MTKView {
     weak var renderer: Renderer?
 
     override var acceptsFirstResponder: Bool { true }
+
+    /// Windows that are closed and reopened (SwiftUI reuses them) can leave the view's draw loop
+    /// stopped, so pause explicitly when leaving a window and resume when entering one.
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        isPaused = window == nil
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
