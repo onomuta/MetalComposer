@@ -4,7 +4,12 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    static let metalComposition = UTType(filenameExtension: "mcomp", conformingTo: .json) ?? .json
+    /// Resolved by extension only. Until the .app bundle declares the type, LaunchServices gives
+    /// `.mcomp` files a dynamic type that conforms to nothing but `public.data`; asking for one
+    /// `conformingTo: .json` here produced a *different* dynamic type, so NSOpenPanel greyed out
+    /// every composition. Once the bundle's UTExportedTypeDeclarations is registered, this
+    /// resolves to `dev.metalcomposer.composition` instead.
+    static let metalComposition = UTType(filenameExtension: "mcomp") ?? .json
 }
 
 final class AppState: ObservableObject {
@@ -90,6 +95,11 @@ final class AppState: ObservableObject {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.metalComposition, .json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        open(url)
+    }
+
+    /// Loads a composition file (from the Open panel, or from Finder via `onOpenURL`).
+    func open(_ url: URL) {
         do {
             try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
@@ -244,6 +254,7 @@ struct ContentView: View {
             }
         }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        .onOpenURL { url in state.open(url) } // double-click / drop on the Dock icon (bundled app)
         .sheet(isPresented: $state.showExport) {
             ExportMovieView(exporter: state.exporter) { state.exportMovie() }
                 .interactiveDismissDisabled(state.exporter.isExporting)
