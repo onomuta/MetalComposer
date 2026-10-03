@@ -124,8 +124,29 @@ private struct NodeInspector: View {
             case .string: stringRow(spec)
             case .image:
                 LabeledContent(spec.name) { Text("Connect an image").foregroundStyle(.tertiary) }
+            case .structure:
+                LabeledContent(spec.name) { Text("Connect a structure").foregroundStyle(.tertiary) }
+            case .any:
+                // Virtual input: text that is exactly a number becomes a number, anything else stays
+                // text. "1." or "0.10" stay text until finished, so typing never gets reformatted.
+                TextField(spec.name, text: Binding(
+                    get: {
+                        let v = node.params[spec.key] ?? spec.defaultValue
+                        if case .number(let d) = v { return Self.canonical(d) }
+                        return v.summary
+                    },
+                    set: { text in
+                        let trimmed = text.trimmingCharacters(in: .whitespaces)
+                        let value = Double(trimmed).flatMap { Self.canonical($0) == trimmed ? Value.number($0) : nil }
+                        composition.setParam(node, spec.key, value ?? .string(text))
+                    }), prompt: Text("number or text"))
             }
         }
+    }
+
+    /// Shortest text for a number: "2", "1.5", "-0.25".
+    static func canonical(_ d: Double) -> String {
+        d == d.rounded() && abs(d) < 1e15 ? String(Int(d)) : String(d)
     }
 
     private func numberBinding(_ spec: PortSpec) -> Binding<Double> {

@@ -5,6 +5,7 @@ enum Demo: String, CaseIterable, Identifiable {
     case feedback = "Feedback Trails"
     case iterator = "Iterator"
     case cube = "3D Cube"
+    case structures = "Structures & Queue"
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum Demo: String, CaseIterable, Identifiable {
         case .feedback: Self.feedback(g)
         case .iterator: Self.iterator(g)
         case .cube: Self.cube(g)
+        case .structures: Self.structures(g)
         }
     }
 
@@ -141,5 +143,46 @@ enum Demo: String, CaseIterable, Identifiable {
         let label = sub.put(TextImagePatch.self, 40, 600, ["text": .string("Metal"), "size": .number(96)])
         let billboard = sub.put(BillboardPatch.self, 300, 600, ["width": .number(0.32)], name: "Label (faces viewer)")
         sub.link(label, "image", billboard, "image")
+    }
+
+    /// A moving point packed into a {x, y} structure, queued for 60 frames and drawn back by an
+    /// Iterator as a trail: Structure Maker → Queue → Structure Count / Index Member / Key Member.
+    private static func structures(_ g: Graph) {
+        g.put(ClearPatch.self, 980, 40, ["color": .color(SIMD4(0.02, 0.02, 0.04, 1))])
+        let px = g.put(MathExpressionPatch.self, 40, 60, ["expression": .string("sin(t * 1.3) * 0.7 + sin(t * 3.1) * 0.1")], name: "Path X")
+        let py = g.put(MathExpressionPatch.self, 40, 200, ["expression": .string("sin(t * 2.1) * 0.35")], name: "Path Y")
+        let maker = g.put(StructureMakerPatch.self, 300, 100, ["count": .number(2), "keys": .string("x, y")], name: "Point")
+        let queue = g.put(QueuePatch.self, 540, 100, ["size": .number(60)], name: "Last 60 Points")
+        let count = g.put(StructureCountPatch.self, 540, 280)
+        let trail = g.put(IteratorPatch.self, 780, 120, name: "Trail")
+        g.link(px, "result", maker, "m0")
+        g.link(py, "result", maker, "m1")
+        g.link(maker, "structure", queue, "value")
+        g.link(queue, "queue", count, "structure")
+        g.link(count, "count", trail, "iterations")
+
+        let sub = trail.contents
+        let vars = sub.nodes.compactMap { $0 as? IteratorVariablesPatch }.first!
+        let points = sub.put(PublishedInputPatch.self, 40, 200, name: "Points")
+        points.portType = .structure
+        let pick = sub.put(StructureIndexMemberPatch.self, 300, 120)
+        let kx = sub.put(StructureKeyMemberPatch.self, 540, 60, ["key": .string("x")])
+        let ky = sub.put(StructureKeyMemberPatch.self, 540, 180, ["key": .string("y")])
+        let size = sub.put(MathExpressionPatch.self, 540, 300, ["expression": .string("0.01 + 0.05 * a")], name: "Size")
+        let hsl = sub.put(HSLColorPatch.self, 540, 440, ["saturation": .number(0.85), "luminosity": .number(0.6)])
+        let dot = sub.put(BillboardPatch.self, 800, 160, ["blending": .number(1)], name: "Dot")
+        sub.link(points, "value", pick, "structure")
+        sub.link(vars, "index", pick, "index")
+        sub.link(pick, "member", kx, "structure")
+        sub.link(pick, "member", ky, "structure")
+        sub.link(vars, "position", size, "a")
+        sub.link(vars, "position", hsl, "hue")
+        sub.link(kx, "member", dot, "x")
+        sub.link(ky, "member", dot, "y")
+        sub.link(size, "result", dot, "width")
+        sub.link(size, "result", dot, "height")
+        sub.link(hsl, "color", dot, "color")
+
+        g.link(queue, "queue", trail, points.portKey)
     }
 }

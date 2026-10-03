@@ -47,6 +47,22 @@ struct PortSpec {
     static func image(_ key: String, _ name: String) -> PortSpec {
         PortSpec(key: key, name: name, type: .image, defaultValue: .image(nil))
     }
+    static func structure(_ key: String, _ name: String) -> PortSpec {
+        PortSpec(key: key, name: name, type: .structure, defaultValue: .structure(Structure()))
+    }
+
+    /// Accepts any value (QC's virtual port).
+    static func any(_ key: String, _ name: String, _ value: Value = .number(0)) -> PortSpec {
+        PortSpec(key: key, name: name, type: .any, defaultValue: value)
+    }
+
+    /// A whole number ≥ 0 (indices, counts): knob step 0.1 per point, so 10 points per step.
+    static func index(_ key: String, _ name: String, _ value: Double = 0) -> PortSpec {
+        var s = number(key, name, value).limited(min: 0)
+        s.step = 0.1
+        return s
+    }
+
     /// A coordinate: no range (things move off-screen), knob step 0.005 per point.
     static func position(_ key: String, _ name: String, _ value: Double = 0) -> PortSpec {
         var s = number(key, name, value)
@@ -87,6 +103,7 @@ struct Inputs {
     func color(_ k: String) -> SIMD4<Float> { values[k]?.color ?? .one }
     func string(_ k: String) -> String { values[k]?.string ?? "" }
     func image(_ k: String) -> MTLTexture? { values[k]?.image }
+    func structure(_ k: String) -> Structure { values[k]?.structure ?? Structure() }
 }
 
 struct EvalContext {
@@ -226,9 +243,12 @@ enum PatchRegistry {
         // Macros
         MacroPatch.self, IteratorPatch.self, RenderInImagePatch.self, Transform3DPatch.self,
         PublishedInputPatch.self, PublishedOutputPatch.self, IteratorVariablesPatch.self,
+        // Structures
+        StructureMakerPatch.self, StructureIndexMemberPatch.self, StructureKeyMemberPatch.self,
+        StructureCountPatch.self, QueuePatch.self,
         // Utility
         CommentPatch.self,
     ]
     static let byID: [String: Patch.Type] = Dictionary(uniqueKeysWithValues: all.map { ($0.typeID, $0) })
-    static let sections = ["Providers", "Processors", "Consumers", "Macros", "Utility"]
+    static let sections = ["Providers", "Processors", "Consumers", "Structures", "Macros", "Utility"]
 }

@@ -10,6 +10,8 @@ extension PortType {
         case .color: return Color(red: 0.95, green: 0.45, blue: 0.65)
         case .string: return Color(red: 0.5, green: 0.85, blue: 0.55)
         case .image: return Color(red: 0.75, green: 0.55, blue: 0.95)
+        case .structure: return Color(red: 0.98, green: 0.62, blue: 0.3)
+        case .any: return Color(white: 0.8)
         }
     }
 }
@@ -680,7 +682,7 @@ private struct PortValueBubble: View {
                 Text(value!.summary).monospacedDigit()
             }
         case let v?:
-            Text(v.summary).monospacedDigit().lineLimit(6).frame(maxWidth: 260, alignment: .leading)
+            Text(v.summary).monospacedDigit().lineLimit(10).frame(maxWidth: 260, alignment: .leading)
         }
     }
 }
