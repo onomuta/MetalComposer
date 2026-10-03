@@ -16,11 +16,13 @@ swift test                     # テスト（保存と読み込み、マクロ�
 ### 配布用のビルド
 
 ```bash
-VERSION=0.1.0 UNIVERSAL=1 ./Scripts/bundle.sh release   # Apple silicon と Intel 両対応の .app
-ditto -c -k --keepParent "build/Metal Composer.app" "build/MetalComposer-0.1.0-macOS.zip"
+# Apple silicon と Intel 両対応の .app を Developer ID で署名（Hardened Runtime）
+VERSION=0.1.0 UNIVERSAL=1 SIGN_IDENTITY="Developer ID Application: Takao Onomura (BWZ7Q5QLJ5)" ./Scripts/bundle.sh release
+# 公証してチケットを添付し、zip にする（初回のみ notarytool store-credentials が必要。スクリプト冒頭を参照）
+./Scripts/notarize.sh 0.1.0
 ```
 
-アドホック署名で公証（notarization）はしていないので、ダウンロードした .app の初回起動時は macOS にブロックされます。Finder でアプリを右クリック › 開く（macOS 15 では、システム設定 › プライバシーとセキュリティ › 「このまま開く」）で起動できます。
+`SIGN_IDENTITY` を付けない場合はアドホック署名になり、手元で使う分には問題ありません。マイクを使うため、Hardened Runtime の entitlement（`Scripts/MetalComposer.entitlements`）で音声入力を許可しています。公証していない Developer ID 署名版は、ダウンロード後の初回起動時に macOS にブロックされます。
 
 ## 操作方法
 

@@ -4,6 +4,9 @@
 # Environment:
 #   VERSION=0.1.0   version shown in Finder / About (default: 0.1.0-dev)
 #   UNIVERSAL=1     build for both Apple silicon and Intel (release distribution)
+#   SIGN_IDENTITY="Developer ID Application: …"
+#                   sign for distribution (hardened runtime + secure timestamp);
+#                   without it the app is signed ad hoc for local use
 set -e
 cd "$(dirname "$0")/.."
 CONFIG=${1:-release}
@@ -43,5 +46,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+if [[ -n "$SIGN_IDENTITY" ]]; then
+  codesign --force --options runtime --timestamp \
+    --entitlements Scripts/MetalComposer.entitlements \
+    --sign "$SIGN_IDENTITY" "$APP"
+  codesign --verify --deep --strict "$APP"
+else
+  codesign --force --sign - "$APP" >/dev/null 2>&1 || true
+fi
 echo "Built: $APP ($VERSION, $(lipo -archs "$APP/Contents/MacOS/MetalComposer"))"
