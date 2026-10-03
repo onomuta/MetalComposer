@@ -43,6 +43,26 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSMicrophoneUsageDescription</key><string>Audio Input and Audio Spectrum patches react to sound from the microphone or audio input.</string>
+  <!-- .mcomp as a document type: Finder double-click, "Open With", and a real UTType for the panels. -->
+  <key>UTExportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key><string>dev.metalcomposer.composition</string>
+      <key>UTTypeDescription</key><string>Metal Composer Composition</string>
+      <key>UTTypeConformsTo</key><array><string>public.json</string></array>
+      <key>UTTypeTagSpecification</key>
+      <dict><key>public.filename-extension</key><array><string>mcomp</string></array></dict>
+    </dict>
+  </array>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key><string>Metal Composer Composition</string>
+      <key>CFBundleTypeRole</key><string>Editor</string>
+      <key>LSHandlerRank</key><string>Owner</string>
+      <key>LSItemContentTypes</key><array><string>dev.metalcomposer.composition</string></array>
+    </dict>
+  </array>
 </dict>
 </plist>
 PLIST
