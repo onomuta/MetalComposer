@@ -9,14 +9,46 @@ package final class ImageImporterPatch: Patch {
     package override class var category: PatchCategory { .provider }
     package override class var summary: String { "Loads an image file (PNG, JPEG, HEIC…) into a texture." }
     package override class var inputSpecs: [PortSpec] {
-        [.string("path", "File", "", isPort: false, isFilePath: true)]
+        [.string("path", "File", "", isPort: false, isFilePath: true),
+         .bool("embed", "Embed in Composition", false).setting(),
+         // The file's bytes (base64), kept in the composition while Embed is on. The editor fills it.
+         .string("data", "Embedded Data", "").hiddenSetting()]
     }
     package override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
 
+    /// Embedded images larger than this make opening the composition noticeably slower.
+    package static let embedWarningBytes = 10_000_000
+
+    /// Size in bytes of the embedded image (0 when nothing is embedded).
+    package var embeddedByteCount: Int {
+        guard params["embed"]?.bool == true, let data = params["data"]?.string else { return 0 }
+        return data.utf8.count / 4 * 3
+    }
+
     private var loadedPath: String?
+    private var loadedData: String?
     private var texture: MTLTexture?
 
     package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        // An embedded image wins over the file, so the composition works without it.
+        if i.bool("embed"), case let data = i.string("data"), !data.isEmpty {
+            if data != loadedData {
+                loadedData = data
+                loadedPath = nil
+                texture = nil
+                do {
+                    guard let bytes = Data(base64Encoded: data) else { throw CocoaError(.fileReadCorruptFile) }
+                    texture = try ctx.resources.textureLoader.newTexture(
+                        data: bytes, options: [.SRGB: false, .origin: MTKTextureLoader.Origin.topLeft])
+                    setStatus(nil)
+                } catch {
+                    setStatus("Could not load the embedded image: \(error.localizedDescription)")
+                }
+            }
+            return ["image": .image(texture)]
+        }
+        loadedData = nil
+
         var path = (i.string("path") as NSString).expandingTildeInPath
         // Relative paths are relative to the composition file, so a folder of material moves as one.
         if !path.isEmpty, !path.hasPrefix("/"), let base = ctx.resources.baseDirectory {

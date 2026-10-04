@@ -9,25 +9,8 @@ final class PlayerTests: XCTestCase {
         engine = try MetalComposerEngine(device: try XCTUnwrap(MTLCreateSystemDefaultDevice()))
     }
 
-    /// Renders one frame into a 16×16 texture and returns the center pixel as (r, g, b, a).
     private func render(_ player: CompositionPlayer, time: Double = 0) throws -> [UInt8] {
-        let device = engine.device
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: MetalComposerEngine.pixelFormat, width: 16, height: 16, mipmapped: false)
-        desc.usage = [.renderTarget, .shaderRead]
-        desc.storageMode = device.hasUnifiedMemory ? .shared : .managed
-        let target = try XCTUnwrap(device.makeTexture(descriptor: desc))
-        let queue = try XCTUnwrap(device.makeCommandQueue())
-        let cb = try XCTUnwrap(queue.makeCommandBuffer())
-        player.encode(into: target, time: time, commandBuffer: cb)
-        if desc.storageMode == .managed, let blit = cb.makeBlitCommandEncoder() {
-            blit.synchronize(resource: target)
-            blit.endEncoding()
-        }
-        cb.commit()
-        cb.waitUntilCompleted()
-        var bgra = [UInt8](repeating: 0, count: 4)
-        target.getBytes(&bgra, bytesPerRow: 16 * 4, from: MTLRegionMake2D(8, 8, 1, 1), mipmapLevel: 0)
-        return [bgra[2], bgra[1], bgra[0], bgra[3]]
+        try PlayerFixtures.centerPixel(player, engine: engine, time: time)
     }
 
     func testParametersAreListedAndDriveTheComposition() throws {

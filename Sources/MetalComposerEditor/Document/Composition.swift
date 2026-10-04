@@ -154,7 +154,23 @@ final class Composition: ObservableObject {
     func setParam(_ node: Patch, _ key: String, _ value: Value) {
         checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
         node.params[key] = value
+        if let importer = node as? ImageImporterPatch, key == "path" || key == "embed" { updateEmbeddedImage(importer) }
         touch() // published ports may change type or name
+    }
+
+    /// Copies the Image Importer's file into the composition while Embed is on, and drops the copy
+    /// when it is off. If the file can't be read, nothing is embedded and the file is used as before.
+    private func updateEmbeddedImage(_ importer: ImageImporterPatch) {
+        guard importer.params["embed"]?.bool == true else {
+            importer.params["data"] = nil
+            return
+        }
+        var path = ((importer.params["path"]?.string ?? "") as NSString).expandingTildeInPath
+        if !path.isEmpty, !path.hasPrefix("/"), let folder = fileURL?.deletingLastPathComponent() {
+            path = folder.appendingPathComponent(path).standardizedFileURL.path
+        }
+        let bytes = path.isEmpty ? nil : try? Data(contentsOf: URL(fileURLWithPath: path))
+        importer.params["data"] = bytes.map { .string($0.base64EncodedString()) }
     }
 
     func rename(_ node: Patch, _ name: String) {

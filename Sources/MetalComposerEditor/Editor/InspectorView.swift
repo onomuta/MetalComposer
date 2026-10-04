@@ -74,6 +74,9 @@ private struct NodeInspector: View {
                     ForEach(node.allInputs.filter { !$0.hidden }, id: \.key) { spec in
                         inputRow(spec)
                     }
+                    if let importer = node as? ImageImporterPatch {
+                        embeddedImageNote(importer)
+                    }
                 }
             }
 
@@ -92,6 +95,26 @@ private struct NodeInspector: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func embeddedImageNote(_ importer: ImageImporterPatch) -> some View {
+        let bytes = importer.embeddedByteCount
+        if importer.params["embed"]?.bool == true {
+            // The editor UI is in English, so don't use the system's localized byte units.
+            let size = bytes >= 1_000_000 ? String(format: "%.1f MB", Double(bytes) / 1e6)
+                : String(format: "%.0f KB", max(1, Double(bytes) / 1e3))
+            if bytes == 0 {
+                Text("The file couldn't be read, so nothing is embedded. Choose the file again.")
+                    .font(.caption).foregroundStyle(.red)
+            } else if bytes > ImageImporterPatch.embedWarningBytes {
+                Text("Embedded \(size). Large embedded images make the composition slow to open, and apps that play it may pause while it loads. Consider keeping this image as a file.")
+                    .font(.caption).foregroundStyle(.orange)
+            } else {
+                Text("Embedded \(size). The composition works without the file.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
     }
 
     @ViewBuilder
@@ -218,6 +241,7 @@ private struct NodeInspector: View {
                             stringBinding(spec).wrappedValue = composition.storedPath(for: url)
                         }
                     }
+                    .fixedSize()
                 }
             }
         } else {
