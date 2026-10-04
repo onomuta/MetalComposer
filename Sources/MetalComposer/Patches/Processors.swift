@@ -2,6 +2,7 @@ import Foundation
 import simd
 
 final class LFOPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "lfo" }
     override class var title: String { "LFO" }
     override class var summary: String { "Low frequency oscillator driven by patch time." }
@@ -29,6 +30,7 @@ final class LFOPatch: Patch {
 }
 
 final class InterpolationPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "interpolation" }
     override class var title: String { "Interpolation" }
     override class var summary: String { "Animates from a start to an end value over time with easing." }
@@ -99,6 +101,7 @@ final class MathPatch: Patch {
 }
 
 final class MathExpressionPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "math-expression" }
     override class var title: String { "Math Expression" }
     override class var summary: String { "Evaluates a formula of a, b, c, d and t (time). e.g. sin(t*2)*a" }
@@ -123,29 +126,116 @@ final class MathExpressionPatch: Patch {
     }
 }
 
+/// Follows its input gradually, with separate times for rising and falling and a choice of curve.
 final class SmoothPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "smooth" }
     override class var title: String { "Smooth" }
-    override class var summary: String { "Exponentially smooths a changing value." }
+    override class var summary: String { "Follows a changing value gradually; separate durations for increasing and decreasing." }
     override class var inputSpecs: [PortSpec] {
-        [.number("value", "Value", 0), .number("smoothing", "Smoothing (s)", 0.25, 0...3).limited(min: 0)]
+        [.number("value", "Value", 0),
+         .number("up", "Increasing Duration (s)", 0.25, 0...3).limited(min: 0),
+         .number("down", "Decreasing Duration (s)", 0.25, 0...3).limited(min: 0),
+         PortSpec.menu("curve", "Curve", ["Exponential", "Linear", "Ease In Out"]).setting()]
     }
     override class var outputSpecs: [PortSpec] { [.number("value", "Value")] }
 
     private var current: Double?
+    /// Linear / Ease In Out: the move in progress, from `from` to `to`, `elapsed` seconds in.
+    private var segment: (from: Double, to: Double, elapsed: Double)?
 
     override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
         let target = i.number("value")
-        let tau = i.number("smoothing")
-        if let c = current, tau > 0 {
-            current = c + (target - c) * (1 - exp(-ctx.deltaTime / tau))
-        } else {
+        guard let c = current else {
             current = target
+            return ["value": .number(target)]
         }
-        return ["value": .number(current ?? target)]
+        // Time stopped or rewound (External time base): hold the current value.
+        let dt = ctx.deltaTime
+        guard dt > 0 else { return ["value": .number(c)] }
+
+        let rising = target > c
+        let duration = i.number(rising ? "up" : "down")
+        let next: Double
+        switch i.int("curve") {
+        case 1, 2:
+            // Start a new move whenever the target changes; it takes `duration` to arrive.
+            if segment == nil || segment!.to != target { segment = (c, target, 0) }
+            segment!.elapsed += dt
+            let p = duration > 0 ? min(segment!.elapsed / duration, 1) : 1
+            let eased = i.int("curve") == 2 ? p * p * (3 - 2 * p) : p
+            next = segment!.from + (segment!.to - segment!.from) * eased
+        default:
+            // Exponential: within 1% of the target after `duration` (time constant = duration / 5).
+            segment = nil
+            next = duration > 0 ? c + (target - c) * (1 - exp(-dt * 5 / duration)) : target
+        }
+        current = next
+        return ["value": .number(next)]
     }
 
-    override func reset() { current = nil }
+    override func reset() {
+        current = nil
+        segment = nil
+    }
+}
+
+/// Accumulates its input over time: Value is a rate per second (QC's Integrator).
+final class IntegratorPatch: Patch {
+    override class var usesTime: Bool { true }
+    override class var typeID: String { "integrator" }
+    override class var title: String { "Integrator" }
+    override class var summary: String { "Adds up Value × elapsed time (Value is a rate per second). Reset returns to 0." }
+    override class var inputSpecs: [PortSpec] {
+        [.number("value", "Value", 0, -1...1), .bool("reset", "Reset", false)]
+    }
+    override class var outputSpecs: [PortSpec] { [.number("integral", "Integrated Value")] }
+
+    private var total: Double = 0
+
+    override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        if i.bool("reset") {
+            total = 0
+        } else {
+            // On its time base: paused time adds nothing; rewound External time subtracts.
+            total += i.number("value") * ctx.deltaTime
+        }
+        return ["integral": .number(total)]
+    }
+
+    override func reset() { total = 0 }
+}
+
+/// Counts rising edges: +1 when Increasing turns on, −1 when Decreasing turns on (QC's Counter).
+final class CounterPatch: Patch {
+    override class var typeID: String { "counter" }
+    override class var title: String { "Counter" }
+    override class var summary: String { "Counts up or down each time a signal turns on (e.g. mouse clicks). Stays at 0 while Reset Signal is on." }
+    override class var inputSpecs: [PortSpec] {
+        [.bool("up", "Increasing Signal"), .bool("down", "Decreasing Signal"), .bool("reset", "Reset Signal")]
+    }
+    override class var outputSpecs: [PortSpec] { [.number("count", "Count")] }
+
+    private var count = 0
+    /// Signal states from the previous evaluation, to detect off → on changes.
+    private var was = (up: false, down: false)
+
+    override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let now = (up: i.bool("up"), down: i.bool("down"))
+        if i.bool("reset") {
+            count = 0 // held at 0 while Reset Signal is on
+        } else {
+            if now.up && !was.up { count += 1 }
+            if now.down && !was.down { count -= 1 }
+        }
+        was = now
+        return ["count": .number(Double(count))]
+    }
+
+    override func reset() {
+        count = 0
+        was = (false, false)
+    }
 }
 
 final class ConditionalPatch: Patch {

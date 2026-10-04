@@ -1,6 +1,7 @@
 import Foundation
 
 final class PatchTimePatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "patch-time" }
     override class var title: String { "Patch Time" }
     override class var category: PatchCategory { .provider }
@@ -27,6 +28,7 @@ final class MousePatch: Patch {
 }
 
 final class RandomPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "random" }
     override class var title: String { "Random" }
     override class var category: PatchCategory { .provider }

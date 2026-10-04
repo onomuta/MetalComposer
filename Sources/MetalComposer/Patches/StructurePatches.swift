@@ -22,7 +22,7 @@ final class StructureMakerPatch: Patch {
         return (0..<memberCount).map { i in names.indices.contains(i) && !names[i].isEmpty ? names[i] : nil }
     }
 
-    override var allInputs: [PortSpec] {
+    override var ownInputs: [PortSpec] {
         type(of: self).inputSpecs + keys.enumerated().map { i, key in .any("m\(i)", key ?? "Member \(i + 1)") }
     }
 

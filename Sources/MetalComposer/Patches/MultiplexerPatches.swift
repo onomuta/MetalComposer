@@ -38,7 +38,7 @@ final class MultiplexerPatch: Patch {
         Switching.settings("Inputs") + [PortSpec.index("index", "Source Index")]
     }
 
-    override var allInputs: [PortSpec] {
+    override var ownInputs: [PortSpec] {
         let portType = Switching.type(self)
         return type(of: self).inputSpecs + (0..<Switching.count(self)).map { Switching.port("i\($0)", "Source \($0)", portType) }
     }
@@ -62,7 +62,7 @@ final class DemultiplexerPatch: Patch {
                PortSpec.index("index", "Destination Index")]
     }
 
-    override var allInputs: [PortSpec] {
+    override var ownInputs: [PortSpec] {
         type(of: self).inputSpecs + [Switching.port("input", "Input", Switching.type(self))]
     }
 

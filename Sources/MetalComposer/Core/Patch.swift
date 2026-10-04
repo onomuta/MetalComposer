@@ -109,8 +109,10 @@ struct Inputs {
 struct EvalContext {
     let resources: RenderResources
     let commandBuffer: MTLCommandBuffer
-    let time: Double
-    let deltaTime: Double
+    /// Seconds on this patch's time base (see `Patch.usesTime`).
+    var time: Double
+    /// Seconds since this patch last ran on its time base (0 or negative when time stops or rewinds).
+    var deltaTime: Double
     /// Viewer drawable size in pixels.
     let viewportSize: CGSize
     /// Mouse position in composition units (x: -1…1, y: -h/w…h/w).
@@ -129,7 +131,8 @@ struct EvalContext {
 
 struct RenderContext {
     let encoder: MTLRenderCommandEncoder
-    let eval: EvalContext
+    /// The evaluation context of the patch that is drawing (its time base, iteration…).
+    var eval: EvalContext
     /// Size in pixels of the texture being rendered into.
     let targetSize: CGSize
     /// Model transform accumulated from enclosing 3D Transformation patches.
@@ -169,6 +172,10 @@ class Patch: ObservableObject, Identifiable {
     class var summary: String { "" }
     class var inputSpecs: [PortSpec] { [] }
     class var outputSpecs: [PortSpec] { [] }
+    /// Time-based patches get QC's Time Base setting: Parent, Local or External (a Patch Time input).
+    class var usesTime: Bool { false }
+
+    static let timeBaseOptions = ["Parent", "Local", "External"]
 
     let id: UUID
     var position: CGPoint
@@ -190,7 +197,54 @@ class Patch: ObservableObject, Identifiable {
     var title: String { type(of: self).title }
     var summary: String { type(of: self).summary }
     var category: PatchCategory { type(of: self).category }
-    var allInputs: [PortSpec] { type(of: self).inputSpecs }
+    /// The patch's own inputs; patches with dynamic ports override this.
+    var ownInputs: [PortSpec] { type(of: self).inputSpecs }
+    /// Every input, including the Time Base setting and Patch Time port of time-based patches.
+    var allInputs: [PortSpec] { ownInputs + timeBaseInputs }
+
+    var usesTime: Bool { type(of: self).usesTime }
+    /// 0 Parent, 1 Local, 2 External.
+    var timeBase: Int { usesTime ? Int((params["timeBase"]?.number ?? 0).rounded()) : 0 }
+
+    private var timeBaseInputs: [PortSpec] {
+        guard usesTime else { return [] }
+        var specs = [PortSpec.menu("timeBase", "Time Base", Patch.timeBaseOptions).setting()]
+        if timeBase == 2 {
+            var patchTime = PortSpec.number("patchTime", "Patch Time")
+            patchTime.step = 0.01
+            specs.append(patchTime)
+        }
+        return specs
+    }
+
+    private var localStart: Double?
+    private var lastExternalTime: Double?
+
+    /// The context this patch runs in, with time replaced according to its Time Base.
+    func timeContext(_ inputs: Inputs, _ ctx: EvalContext) -> EvalContext {
+        var c = ctx
+        switch timeBase {
+        case 1:
+            if localStart == nil { localStart = ctx.time }
+            c.time = ctx.time - (localStart ?? ctx.time)
+        case 2:
+            let t = inputs.number("patchTime")
+            c.deltaTime = lastExternalTime.map { t - $0 } ?? 0
+            lastExternalTime = t
+            c.time = t
+        default:
+            break
+        }
+        return c
+    }
+
+    /// Playback restart: clears state here and in any child graph.
+    func restart() {
+        localStart = nil
+        lastExternalTime = nil
+        reset()
+        subgraph?.nodes.forEach { $0.restart() }
+    }
     var outputPorts: [PortSpec] { type(of: self).outputSpecs }
     var inputPorts: [PortSpec] { allInputs.filter(\.isPort) }
     /// Child graph for macro-like patches.
@@ -205,7 +259,12 @@ class Patch: ObservableObject, Identifiable {
     /// Runs the patch for one frame. Consumers defer their drawing into a command.
     func execute(_ inputs: Inputs, _ ctx: EvalContext) -> PatchResult {
         if category == .consumer {
-            return PatchResult(commands: [{ [self] rc in self.render(inputs, rc) }])
+            // Draw on this patch's own time base, not the viewer's.
+            return PatchResult(commands: [{ [self] rc in
+                var context = rc
+                context.eval = ctx
+                self.render(inputs, context)
+            }])
         }
         return PatchResult(outputs: evaluate(inputs, ctx))
     }
@@ -236,7 +295,7 @@ enum PatchRegistry {
         ImageImporterPatch.self, TextImagePatch.self, AudioInputPatch.self, AudioSpectrumPatch.self,
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,
-        SmoothPatch.self, ConditionalPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
+        SmoothPatch.self, IntegratorPatch.self, CounterPatch.self, ConditionalPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
         RGBColorPatch.self, HSLColorPatch.self,
         CoreImageFilterPatch.self,
         // Consumers

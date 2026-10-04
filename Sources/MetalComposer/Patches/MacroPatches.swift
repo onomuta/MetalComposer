@@ -62,7 +62,7 @@ final class PublishedOutputPatch: PublishedPortPatch {
     override class var defaultName: String { "Output" }
     override class var summary: String { "Inside a macro: adds an output port to the macro. Its name is the port name." }
 
-    override var allInputs: [PortSpec] {
+    override var ownInputs: [PortSpec] {
         type(of: self).inputSpecs
             + [PortSpec(key: "value", name: portType.displayName, type: portType, defaultValue: portType.defaultValue)]
     }
@@ -74,6 +74,7 @@ final class PublishedOutputPatch: PublishedPortPatch {
 /// A patch containing its own graph. Its ports are the Macro Input / Macro Output patches inside.
 /// It renders (and gets a layer) when its contents include consumers.
 class MacroPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "macro" }
     override class var title: String { "Macro" }
     override class var librarySection: String { "Macros" }
@@ -91,7 +92,7 @@ class MacroPatch: Patch {
         contents.nodes.compactMap { $0 as? PublishedOutputPatch }.sorted { $0.position.y < $1.position.y }
     }
 
-    override var allInputs: [PortSpec] { type(of: self).inputSpecs + publishedInputs.map(\.publishedSpec) }
+    override var ownInputs: [PortSpec] { type(of: self).inputSpecs + publishedInputs.map(\.publishedSpec) }
     override var outputPorts: [PortSpec] { type(of: self).outputSpecs + publishedOutputs.map(\.publishedSpec) }
 
     func makeEvaluator(_ inputs: Inputs, _ ctx: EvalContext) -> Evaluator {

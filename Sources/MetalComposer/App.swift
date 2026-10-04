@@ -31,7 +31,7 @@ final class AppState: ObservableObject {
         } catch {
             fatalError("Failed to build Metal pipelines: \(error)")
         }
-        playback.onRestart = { [composition] in composition.root.nodes.forEach { $0.reset() } }
+        playback.onRestart = { [composition] in composition.root.nodes.forEach { $0.restart() } }
         composition.loadDemo(.basics)
         installDeleteKey()
         exporter.onBusyChange = { [renderer] busy in renderer.isSuspended = busy }

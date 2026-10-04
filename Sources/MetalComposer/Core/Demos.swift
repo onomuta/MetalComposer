@@ -7,6 +7,7 @@ enum Demo: String, CaseIterable, Identifiable {
     case cube = "3D Cube"
     case structures = "Structures & Queue"
     case audio = "Audio Reactive"
+    case rewind = "Time Rewind"
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum Demo: String, CaseIterable, Identifiable {
         case .cube: Self.cube(g)
         case .structures: Self.structures(g)
         case .audio: Self.audio(g)
+        case .rewind: Self.rewind(g)
         }
     }
 
@@ -229,5 +231,25 @@ enum Demo: String, CaseIterable, Identifiable {
         sub.link(hsl, "color", bar, "color")
 
         g.link(spectrum, "spectrum", bars, bands.portKey)
+    }
+
+    /// External time base: a triangle LFO plays the particle system forward and then backward.
+    /// The emitter path runs on the same time, so the trail rewinds exactly.
+    private static func rewind(_ g: Graph) {
+        g.put(ClearPatch.self, 760, 40, ["color": .color(SIMD4(0.02, 0.02, 0.05, 1))])
+        let clock = g.put(LFOPatch.self, 40, 120, ["type": .number(2), "period": .number(12),
+                                                   "amplitude": .number(3), "offset": .number(3.2)], name: "Scrub Time")
+        let pathX = g.put(MathExpressionPatch.self, 320, 60, ["expression": .string("sin(t * 1.4) * 0.6"), "timeBase": .number(2)], name: "Path X")
+        let pathY = g.put(MathExpressionPatch.self, 320, 220, ["expression": .string("sin(t * 2.3) * 0.25"), "timeBase": .number(2)], name: "Path Y")
+        let particles = g.put(ParticleSystemPatch.self, 560, 100, ["timeBase": .number(2), "count": .number(900), "lifetime": .number(2.5),
+                                                                   "speed": .number(0.25), "gravity": .number(0), "size": .number(0.04),
+                                                                   "color": .color(SIMD4(0.4, 0.8, 1, 1))])
+        let label = g.put(TextImagePatch.self, 320, 380, ["size": .number(48), "weight": .number(4)], name: "Time Label")
+        let show = g.put(BillboardPatch.self, 560, 420, ["y": .number(-0.42), "width": .number(0.3), "color": .color(SIMD4(1, 1, 1, 0.7))])
+        for node in [pathX, pathY, particles] { g.link(clock, "value", node, "patchTime") }
+        g.link(pathX, "result", particles, "x")
+        g.link(pathY, "result", particles, "y")
+        g.link(clock, "value", label, "text")
+        g.link(label, "image", show, "image")
     }
 }

@@ -134,10 +134,11 @@ struct ParticleUniforms {
 }
 
 final class ParticleSystemPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "particle-system" }
     override class var title: String { "Particle System" }
     override class var category: PatchCategory { .consumer }
-    override class var summary: String { "Emits, simulates and draws particles (GPU instanced)." }
+    override class var summary: String { "Emits and draws particles (GPU instanced). Follows its Time Base, so it can be stopped, rewound or scrubbed." }
     override class var inputSpecs: [PortSpec] {
         [.bool("enable", "Enable", true),
          .position("x", "X Position"), .position("y", "Y Position"), .position("z", "Z Position"),
@@ -147,58 +148,102 @@ final class ParticleSystemPatch: Patch {
          .number("spread", "Spread (°)", 360, 0...360).limited(0...360), .number("gravity", "Gravity", -0.4, -3...3),
          .number("size", "Size", 0.05, 0...0.3).limited(min: 0),
          .color("color", "Color", SIMD4(1, 0.6, 0.2, 1)), .image("image", "Image"),
-         .menu("blending", "Blending", ["Over", "Add"], 1)]
+         .menu("blending", "Blending", ["Over", "Add"], 1),
+         PortSpec.number("seed", "Random Seed", 0).setting()]
     }
 
-    private struct Particle {
-        var position: SIMD2<Float>
-        var velocity: SIMD2<Float>
-        /// Depth at emission; particles keep it, so a moving emitter leaves trails in depth.
-        var z: Float
-        var age: Float
-        var life: Float
+    /// Emitter settings at a moment in time. Each particle uses the values from its birth.
+    private struct EmitterSample {
+        var time: Double
+        var origin: SIMD3<Float>
+        var speed: Float
+        var direction: Float // radians
+        var spread: Float    // radians
     }
 
-    private var particles: [Particle] = []
-    private var spawnBudget: Float = 0
+    /// Emitter history, sorted by time. Kept for `historySeconds` around the latest time so the
+    /// system can be stopped, rewound or scrubbed (External time base) and still look the same.
+    private var history: [EmitterSample] = []
+    static let historySeconds = 120.0
 
-    override func reset() {
-        particles.removeAll()
-        spawnBudget = 0
+    override func reset() { history.removeAll() }
+
+    /// Particles alive at `time`. A pure function of time and the recorded emitter history:
+    /// particle k is born at k / rate with its own fixed random values, so playing forward,
+    /// pausing, rewinding or jumping to a time always gives the same picture.
+    func instances(_ i: Inputs, time t: Double) -> [ParticleInstance] {
+        let count = min(max(1, i.int("count")), 20000) // inputs can be wired to anything
+        let life = max(0.05, i.number("lifetime"))
+        record(EmitterSample(time: t, origin: SIMD3(i.float("x"), i.float("y"), i.float("z")),
+                             speed: i.float("speed"), direction: i.float("direction") * .pi / 180,
+                             spread: i.float("spread") * .pi / 180))
+
+        let rate = Double(count) / life
+        guard t >= 0 else { return [] }
+        let newest = Int((t * rate).rounded(.down))
+        let oldest = max(0, Int(((t - life) * rate).rounded(.up)))
+        guard newest >= oldest else { return [] }
+
+        let seed = i.number("seed") * 7.31
+        let gravity = SIMD2<Float>(0, i.float("gravity"))
+        let baseSize = i.float("size")
+        var out: [ParticleInstance] = []
+        out.reserveCapacity(newest - oldest + 1)
+        for k in oldest...newest {
+            func random(_ n: Double) -> Float { Float(MathExpression.hash(Double(k) * 3.17 + n + seed)) }
+            let birth = Double(k) / rate
+            let lifespan = Float(life) * (0.6 + 0.4 * random(0))
+            let age = Float(t - birth)
+            guard age >= 0, age < lifespan else { continue }
+            let e = sample(at: birth)
+            let angle = e.direction + (random(1) - 0.5) * e.spread
+            let velocity = SIMD2(cos(angle), sin(angle)) * e.speed * (0.4 + 0.6 * random(2))
+            let position = SIMD2(e.origin.x, e.origin.y) + velocity * age + 0.5 * gravity * age * age
+            let f = age / lifespan
+            out.append(ParticleInstance(position: position, z: e.origin.z, size: baseSize * (1 - 0.6 * f), alpha: 1 - f))
+        }
+        return out
+    }
+
+    /// Stores the emitter state at `sample.time`, replacing a sample at (almost) the same time.
+    private func record(_ sample: EmitterSample) {
+        let i = insertionIndex(sample.time)
+        let tolerance = 1.0 / 240
+        if i < history.count, abs(history[i].time - sample.time) < tolerance {
+            history[i] = sample
+        } else if i > 0, abs(history[i - 1].time - sample.time) < tolerance {
+            history[i - 1] = sample
+        } else {
+            history.insert(sample, at: i)
+        }
+        history.removeAll { abs($0.time - sample.time) > Self.historySeconds }
+    }
+
+    private func insertionIndex(_ t: Double) -> Int {
+        var lo = 0, hi = history.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if history[mid].time < t { lo = mid + 1 } else { hi = mid }
+        }
+        return lo
+    }
+
+    /// Emitter state at time `t`, interpolated between recorded samples.
+    private func sample(at t: Double) -> EmitterSample {
+        let i = insertionIndex(t)
+        if i == 0 { return history[0] }
+        if i >= history.count { return history[history.count - 1] }
+        let a = history[i - 1], b = history[i]
+        let f = Float((t - a.time) / max(b.time - a.time, 1e-9))
+        return EmitterSample(time: t, origin: a.origin + (b.origin - a.origin) * f,
+                             speed: a.speed + (b.speed - a.speed) * f,
+                             direction: a.direction + (b.direction - a.direction) * f,
+                             spread: a.spread + (b.spread - a.spread) * f)
     }
 
     override func render(_ i: Inputs, _ ctx: RenderContext) {
         guard i.bool("enable") else { return }
-        let dt = Float(min(ctx.eval.deltaTime, 0.1))
-        let count = min(max(1, i.int("count")), 20000) // inputs can be wired to anything
-        let life = max(0.05, i.float("lifetime"))
-        let origin = SIMD2(i.float("x"), i.float("y"))
-        let originZ = i.float("z")
-        let speed = i.float("speed"), gravity = i.float("gravity")
-        let direction = i.float("direction") * .pi / 180, spread = i.float("spread") * .pi / 180
-
-        spawnBudget += Float(count) / life * dt
-        while spawnBudget >= 1, particles.count < count {
-            spawnBudget -= 1
-            let angle = direction + (Float.random(in: -0.5...0.5)) * spread
-            let v = SIMD2(cos(angle), sin(angle)) * speed * Float.random(in: 0.4...1)
-            particles.append(Particle(position: origin, velocity: v, z: originZ, age: 0, life: life * Float.random(in: 0.6...1)))
-        }
-        if particles.count >= count { spawnBudget = 0 }
-
-        var instances: [ParticleInstance] = []
-        instances.reserveCapacity(particles.count)
-        let baseSize = i.float("size")
-        particles = particles.compactMap { p in
-            var p = p
-            p.age += dt
-            guard p.age < p.life else { return nil }
-            p.velocity.y += gravity * dt
-            p.position += p.velocity * dt
-            let k = p.age / p.life
-            instances.append(ParticleInstance(position: p.position, z: p.z, size: baseSize * (1 - 0.6 * k), alpha: 1 - k))
-            return p
-        }
+        let instances = instances(i, time: ctx.eval.time)
         guard !instances.isEmpty,
               let buffer = ctx.resources.device.makeBuffer(bytes: instances,
                                                            length: MemoryLayout<ParticleInstance>.stride * instances.count)
@@ -229,6 +274,7 @@ struct ShaderUniforms {
 }
 
 final class MetalShaderPatch: Patch {
+    override class var usesTime: Bool { true }
     override class var typeID: String { "metal-shader" }
     override class var title: String { "Metal Shader" }
     override class var category: PatchCategory { .consumer }

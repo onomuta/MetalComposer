@@ -35,7 +35,8 @@ final class Evaluator {
         // A feedback loop sees the previous frame's values instead of recursing forever.
         guard !visiting.contains(node.id) else { return PatchResult(outputs: node.feedbackOutputs(ctx)) }
         visiting.insert(node.id)
-        let result = node.execute(inputs(for: node), ctx)
+        let resolved = inputs(for: node)
+        let result = node.execute(resolved, node.usesTime ? node.timeContext(resolved, ctx) : ctx)
         visiting.remove(node.id)
         node.lastOutputs = result.outputs
         cache[node.id] = result
