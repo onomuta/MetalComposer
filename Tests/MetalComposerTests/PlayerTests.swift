@@ -62,4 +62,23 @@ final class PlayerTests: XCTestCase {
         XCTAssertEqual(player.problems.count, 1)
         XCTAssertThrowsError(try CompositionPlayer(engine: engine, data: PlayerFixtures.futureVersion()))
     }
+
+    func testReportsUnknownPatchesInsteadOfSilentlyDroppingThem() throws {
+        // A clear patch plus two patches from "a newer version", one of them inside a macro.
+        let data = Data("""
+        {"version": 2, "connections": [], "nodes": [
+          {"id": "8C4C2B4E-3C55-4E3B-9F51-0E1E4E2F6A10", "type": "clear", "x": 0, "y": 0,
+           "params": {"color": {"t": "c", "v": [0, 0, 1, 1]}}},
+          {"id": "8C4C2B4E-3C55-4E3B-9F51-0E1E4E2F6A11", "type": "future-patch", "x": 0, "y": 0, "params": {}},
+          {"id": "8C4C2B4E-3C55-4E3B-9F51-0E1E4E2F6A12", "type": "macro", "x": 0, "y": 0, "params": {},
+           "subgraph": {"connections": [], "nodes": [
+             {"id": "8C4C2B4E-3C55-4E3B-9F51-0E1E4E2F6A13", "type": "future-patch", "x": 0, "y": 0, "params": {}},
+             {"id": "8C4C2B4E-3C55-4E3B-9F51-0E1E4E2F6A14", "type": "other-future-patch", "x": 0, "y": 0, "params": {}}]}}]}
+        """.utf8)
+        let player = try CompositionPlayer(engine: engine, data: data)
+        XCTAssertEqual(try render(player), [0, 0, 255, 255], "the known patches still render")
+        XCTAssertEqual(player.problems.count, 2)
+        XCTAssertTrue(player.problems[0].contains("\"future-patch\""))
+        XCTAssertTrue(player.problems[1].contains("\"other-future-patch\""))
+    }
 }

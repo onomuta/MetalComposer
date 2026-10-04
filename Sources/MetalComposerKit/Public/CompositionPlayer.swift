@@ -98,6 +98,8 @@ public final class CompositionPlayer {
     public let parameters: [CompositionParameter]
 
     private let graph = Graph()
+    /// Patch types the file uses that this engine doesn't know; those patches are skipped.
+    private let unknownPatchTypes: [String]
     private let baseDirectory: URL?
     private var values: [String: Value] = [:]
     private var lastTime: Double?
@@ -115,6 +117,7 @@ public final class CompositionPlayer {
         }
         self.engine = engine
         self.baseDirectory = baseDirectory
+        unknownPatchTypes = record.unknownPatchTypes
         graph.load(record)
         parameters = graph.nodes.compactMap { $0 as? PublishedInputPatch }
             .sorted { $0.position.y < $1.position.y }
@@ -141,14 +144,18 @@ public final class CompositionPlayer {
         lastTime = nil
     }
 
-    /// Problems reported by patches (missing image, shader compile error…), for the host's UI.
+    /// Problems for the host's UI: patches this engine doesn't know (skipped when loading), and
+    /// problems reported by patches (missing image, shader compile error…).
     public var problems: [String] {
         func collect(_ g: Graph) -> [String] {
             g.nodes.flatMap { node in
                 (node.statusMessage.map { ["\(node.displayTitle): \($0)"] } ?? []) + (node.subgraph.map(collect) ?? [])
             }
         }
-        return collect(graph)
+        let unknown = unknownPatchTypes.map {
+            "Unknown patch \"\($0)\" (saved by a newer Metal Composer?); it was skipped along with its connections."
+        }
+        return unknown + collect(graph)
     }
 
     /// Renders the composition at `time` into `target` (format `MetalComposerEngine.pixelFormat`)

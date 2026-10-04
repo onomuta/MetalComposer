@@ -409,8 +409,13 @@ final class Composition: ObservableObject {
         return try encoder.encode(root.record())
     }
 
-    func load(_ data: Data, url: URL?) throws {
-        replaceDocument(with: try JSONDecoder().decode(GraphRecord.self, from: data), url: url)
+    /// Loads a document and returns the patch types it uses that this build doesn't know
+    /// (those patches are skipped).
+    @discardableResult
+    func load(_ data: Data, url: URL?) throws -> [String] {
+        let record = try JSONDecoder().decode(GraphRecord.self, from: data)
+        replaceDocument(with: record, url: url)
+        return record.unknownPatchTypes
     }
 
     func loadDemo(_ demo: Demo) {

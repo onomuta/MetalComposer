@@ -28,6 +28,19 @@ package struct GraphRecord: Codable {
     package var version: Int? = 2
     package var nodes: [NodeRecord]
     package var connections: [Connection]
+
+    /// Patch types this build doesn't know (saved by a newer Metal Composer), including inside
+    /// macros, without duplicates and in the order they appear. Loading skips these patches.
+    package var unknownPatchTypes: [String] {
+        var seen = Set<String>()
+        func walk(_ r: GraphRecord) -> [String] {
+            r.nodes.flatMap { n -> [String] in
+                let own = PatchRegistry.byID[n.type] == nil && seen.insert(n.type).inserted ? [n.type] : []
+                return own + (n.subgraph.map(walk) ?? [])
+            }
+        }
+        return walk(self)
+    }
 }
 
 package struct NodeRecord: Codable {

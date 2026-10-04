@@ -98,8 +98,17 @@ final class AppState: ObservableObject {
         panel.allowedContentTypes = [.metalComposition, .json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
-            try composition.load(Data(contentsOf: url), url: url)
+            let unknown = try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
+            if !unknown.isEmpty {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Some patches couldn't be loaded"
+                alert.informativeText = "This composition uses patches this version of Metal Composer doesn't know: "
+                    + unknown.joined(separator: ", ")
+                    + ". They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them."
+                alert.runModal()
+            }
         } catch {
             NSAlert(error: error).runModal()
         }
