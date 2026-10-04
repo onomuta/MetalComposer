@@ -6,7 +6,10 @@ import UniformTypeIdentifiers
 import MetalComposerKit
 
 extension UTType {
-    static let metalComposition = UTType(filenameExtension: "mcomp", conformingTo: .json) ?? .json
+    /// `.mcomp`. Looked up by extension so it matches files on disk both in the bundled app (which
+    /// declares `dev.metalcomposer.composition`) and when run as a bare SwiftPM executable (where
+    /// the system only has a dynamic type for the extension).
+    static let metalComposition = UTType(filenameExtension: "mcomp") ?? .json
 }
 
 final class AppState: ObservableObject {
@@ -97,6 +100,11 @@ final class AppState: ObservableObject {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.metalComposition, .json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        open(url)
+    }
+
+    /// Opens a composition file (from the Open panel, Finder or the Dock).
+    func open(_ url: URL) {
         do {
             let unknown = try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
@@ -141,6 +149,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Files opened from Finder or dropped on the Dock icon. They can arrive before the window
+    /// (and the app state) exists, so they wait until `openHandler` is set.
+    var openHandler: ((URL) -> Void)? {
+        didSet {
+            guard let openHandler else { return }
+            pendingURLs.forEach(openHandler)
+            pendingURLs = []
+        }
+    }
+    private var pendingURLs: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        // One document at a time: the last file wins.
+        guard let url = urls.last else { return }
+        if let openHandler { openHandler(url) } else { pendingURLs = [url] }
+    }
 }
 
 /// The editor app. Launched by the thin `MetalComposer` executable.
@@ -154,6 +179,7 @@ public struct MetalComposerApp: App {
         Window("Metal Composer", id: "main") {
             ContentView(state: state, composition: state.composition)
                 .frame(minWidth: 1100, minHeight: 680)
+                .onAppear { [state] in delegate.openHandler = { state.open($0) } }
         }
         .defaultSize(width: 1500, height: 900)
 
