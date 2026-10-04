@@ -1,5 +1,6 @@
 import XCTest
-@testable import MetalComposer
+@testable import MetalComposerKit
+@testable import MetalComposerEditor
 
 final class EditingTests: XCTestCase {
     private func wire(_ g: Graph, _ a: Patch, _ out: String, _ b: Patch, _ inp: String) -> Bool {

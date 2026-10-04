@@ -1,0 +1,3 @@
+import MetalComposerEditor
+
+MetalComposerApp.main()

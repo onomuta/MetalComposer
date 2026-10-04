@@ -1,6 +1,7 @@
 import Metal
 import XCTest
-@testable import MetalComposer
+@testable import MetalComposerKit
+@testable import MetalComposerEditor
 
 final class SmoothTests: XCTestCase {
     private var resources: RenderResources!

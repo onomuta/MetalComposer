@@ -98,20 +98,54 @@ Quartz Composer と同じく、時間で動くパッチ（Patch Time、LFO、Int
 ## アーキテクチャ
 
 ```
-Sources/MetalComposer/
-├─ Core/       Value・PortSpec・Patch の基底クラス、Composition（ドキュメント、Undo、マクロ化、クリップボード）、
-│              Graph（入れ子にできるグラフと保存形式）、Evaluator（プル型評価）、
-│              Demos、MathExpression のパーサ
-├─ Patches/    Providers / Processors / Image / Consumers / Macros の各パッチ
-├─ Render/     RenderResources（パイプラインとシェーダキャッシュ）、Renderer、ShaderLibrary（MSL）
-└─ Editor/     グラフキャンバス、インスペクタ、ライブラリ、ビューア
+Sources/
+├─ MetalComposerKit/      描画エンジン（他のアプリに組み込む部品。エディタの UI は含まない）
+│  ├─ Core/               Value・PortSpec・Patch の基底クラス、Graph（入れ子にできるグラフと保存形式）、
+│  │                      Evaluator（プル型評価）、Demos、MathExpression のパーサ
+│  ├─ Patches/            Providers／Processors／Image／Consumers／Macros／Structures／Audio の各パッチ
+│  ├─ Render/             RenderResources、FrameRenderer（1 フレームの描画）、ShaderLibrary（MSL）、Camera、MovieExporter
+│  └─ Public/             他のアプリ向けの公開 API（CompositionPlayer）
+├─ MetalComposerEditor/   エディタ（SwiftUI の画面、Composition＝ドキュメントと Undo、ビューア）
+└─ MetalComposer/         エディタを起動するだけの実行ファイル
 ```
+
+エンジン内部の型は `package` 指定で、同じパッケージのエディタとテストからだけ使えます。外部のアプリに見えるのは `Public/` の API だけです。
 
 - **評価モデル**：Quartz Composer と同じプル型です。`Evaluator` は 1 つの `Graph` を 1 フレーム評価します。コンシューマ（Clear、Sprite など）がレイヤ順に要求したパッチだけが、1 回ずつ実行されます（`Patch.execute` → 出力値と描画コマンド）。循環接続がある場合は、前フレームの値を返します。マクロは中のグラフに対して自分用の `Evaluator` を作り、公開入力の値を `EvalContext.published` で渡します。
 - **描画**：フェーズ 1 でグラフを実行し、描画コマンド（`DrawCommand`）を集めます。オフスクリーンの処理（Render In Image、Core Image）は、このときにコマンドバッファへエンコードされます。フェーズ 2 で、ビューアのレンダーパスにコマンドを `#レイヤ番号` の順に再生します。コンシューマは `RenderContext.targetSize` を使って描画するので、画面にもテクスチャにも同じように描けます。
 - **Undo**：編集のたびに、ドキュメントのスナップショット（`GraphRecord`）をドキュメント専用の `UndoManager` に積みます。スライダーのドラッグや文字入力のような連続した変更は、1 回の取り消しにまとめます。
 - **Metal Shader パッチ**：`mainImage(uv, u, image, s)` を書くと、その場でコンパイルされます。エラーは行番号付きでインスペクタに表示されます。
 - **座標系**：QC と同じく、x は -1〜1、y は ±(高さ/幅) です。
+
+## 他のアプリへの組み込み（MetalComposerKit）
+
+VJ アプリなどで `.mcomp` を素材として再生できます。Swift Package Manager で `MetalComposerKit` を追加します。
+
+```swift
+.package(url: "https://github.com/onomuta/MetalComposer.git", from: "0.3.0")
+// ターゲットの依存に .product(name: "MetalComposerKit", package: "MetalComposer")
+```
+
+```swift
+import MetalComposerKit
+
+let engine = try MetalComposerEngine(device: device)          // デバイスごとに 1 つ作って使い回す
+let player = try CompositionPlayer(engine: engine, contentsOf: url)
+
+for p in player.parameters { print(p.name, p.type, p.defaultValue) }   // 作品のトップに置いた Macro Input
+player.setValue(.number(0.8), forParameter: player.parameters[0].key)
+
+// 毎フレーム：ホストの command buffer の中で、bgra8Unorm のテクスチャに描く
+player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer, clearAlpha: 0)
+```
+
+- **スレッド**：メインスレッドで使います（エディタと同じ前提）。
+- **時間**：`time` は作品自身の時計（秒）です。止める・飛ばす・戻すことができ、パーティクルなどもそれに従います。最初からやり直すときは `restart()` を呼びます。
+- **パラメータ**：作品のトップに置いた **Macro Input** が公開パラメータになります。エディタでは Macro Input の「Default Value」で既定値を決められます。
+- **ファイルの場所**：Image Importer のファイルは、作品と同じフォルダの中に置くと相対パスで保存されます。作品のフォルダごと素材フォルダに移しても、そのまま読めます。
+- **問題の確認**：画像が見つからない、シェーダのエラーなどは `problems` で取得できます。
+- **Mouse パッチ**：組み込み先では、位置が常に中央になります。
+- **ファイル形式**：エンジンより新しい形式の作品を読もうとすると、読み込みの段階でエラーになります（`CompositionPlayer.supportedFormatVersion`）。
 
 ## パッチの追加方法
 

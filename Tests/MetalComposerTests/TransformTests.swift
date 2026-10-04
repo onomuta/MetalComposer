@@ -1,6 +1,7 @@
 import XCTest
 import simd
-@testable import MetalComposer
+@testable import MetalComposerKit
+@testable import MetalComposerEditor
 
 final class TransformTests: XCTestCase {
     private func ndc(_ p: SIMD3<Float>, aspect: Float, model: simd_float4x4 = matrix_identity_float4x4) -> SIMD2<Float> {

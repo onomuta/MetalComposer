@@ -1,5 +1,6 @@
 import XCTest
-@testable import MetalComposer
+@testable import MetalComposerKit
+@testable import MetalComposerEditor
 
 /// Analysis math only — these never open the microphone.
 final class AudioTests: XCTestCase {

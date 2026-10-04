@@ -1,5 +1,6 @@
 import XCTest
-@testable import MetalComposer
+@testable import MetalComposerKit
+@testable import MetalComposerEditor
 
 final class ParticleTests: XCTestCase {
     /// The shader reads `struct { float2 position; float z; float size; float alpha; }`: 24-byte stride.

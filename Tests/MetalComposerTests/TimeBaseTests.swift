@@ -1,6 +1,7 @@
 import Metal
 import XCTest
-@testable import MetalComposer
+@testable import MetalComposerKit
+@testable import MetalComposerEditor
 
 final class TimeBaseTests: XCTestCase {
     private func inputs(_ patch: Patch, _ values: [String: Value] = [:]) -> Inputs {
