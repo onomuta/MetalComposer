@@ -264,6 +264,108 @@ package final class ConditionalPatch: Patch {
     }
 }
 
+package final class LogicPatch: Patch {
+    package override class var typeID: String { "logic" }
+    package override class var title: String { "Logic" }
+    package override class var summary: String { "Combines two booleans with AND, OR, XOR, NOT, NAND or NOR." }
+    package override class var inputSpecs: [PortSpec] {
+        [.bool("a", "First Value", false),
+         .menu("op", "Operation", ["AND", "OR", "XOR", "NOT", "NAND", "NOR"]),
+         .bool("b", "Second Value", false)]
+    }
+    package override class var outputSpecs: [PortSpec] { [.bool("result", "Result")] }
+
+    package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let a = i.bool("a"), b = i.bool("b")
+        let r: Bool
+        switch i.int("op") {
+        case 1: r = a || b
+        case 2: r = a != b
+        case 3: r = !a
+        case 4: r = !(a && b)
+        case 5: r = !(a || b)
+        default: r = a && b
+        }
+        return ["result": .bool(r)]
+    }
+}
+
+package final class RangePatch: Patch {
+    package override class var typeID: String { "range" }
+    package override class var title: String { "Range" }
+    package override class var summary: String { "Keeps a value inside a range by clamping, wrapping or mirroring." }
+    package override class var inputSpecs: [PortSpec] {
+        [.number("value", "Value", 0),
+         .number("min", "Minimum", 0), .number("max", "Maximum", 1),
+         .menu("mode", "Mode", ["Clamp", "Wrap", "Mirror"])]
+    }
+    package override class var outputSpecs: [PortSpec] { [.number("result", "Result")] }
+
+    package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let lo = min(i.number("min"), i.number("max")), hi = max(i.number("min"), i.number("max"))
+        let v = i.number("value"), span = hi - lo
+        guard span > 0, v.isFinite else { return ["result": .number(lo)] }
+        let r: Double
+        switch i.int("mode") {
+        case 1:
+            r = lo + (v - lo - span * ((v - lo) / span).rounded(.down))
+        case 2:
+            let t = (v - lo).truncatingRemainder(dividingBy: span * 2)
+            let u = t < 0 ? t + span * 2 : t
+            r = lo + (u <= span ? u : span * 2 - u)
+        default:
+            r = Swift.min(Swift.max(v, lo), hi)
+        }
+        return ["result": .number(r)]
+    }
+}
+
+package final class MapRangePatch: Patch {
+    package override class var typeID: String { "map-range" }
+    package override class var title: String { "Map Range" }
+    package override class var summary: String { "Maps a value from one range to another." }
+    package override class var inputSpecs: [PortSpec] {
+        [.number("value", "Value", 0),
+         .number("inMin", "Input Minimum", 0), .number("inMax", "Input Maximum", 1),
+         .number("outMin", "Output Minimum", 0), .number("outMax", "Output Maximum", 1),
+         .bool("clamp", "Clamp", false)]
+    }
+    package override class var outputSpecs: [PortSpec] { [.number("result", "Result")] }
+
+    package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let inMin = i.number("inMin"), inMax = i.number("inMax")
+        let outMin = i.number("outMin"), outMax = i.number("outMax")
+        var t = inMax == inMin ? 0 : (i.number("value") - inMin) / (inMax - inMin)
+        if i.bool("clamp") { t = Swift.min(Swift.max(t, 0), 1) }
+        return ["result": .number(outMin + (outMax - outMin) * t)]
+    }
+}
+
+package final class RoundPatch: Patch {
+    package override class var typeID: String { "round" }
+    package override class var title: String { "Round" }
+    package override class var summary: String { "Rounds a value, optionally to a multiple of a step." }
+    package override class var inputSpecs: [PortSpec] {
+        [.number("value", "Value", 0),
+         .menu("mode", "Mode", ["Round", "Floor", "Ceil", "Truncate"]),
+         .number("step", "Step", 1, 0...10).limited(min: 0)]
+    }
+    package override class var outputSpecs: [PortSpec] { [.number("result", "Result")] }
+
+    package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let rule: FloatingPointRoundingRule
+        switch i.int("mode") {
+        case 1: rule = .down
+        case 2: rule = .up
+        case 3: rule = .towardZero
+        default: rule = .toNearestOrAwayFromZero
+        }
+        let step = i.number("step"), v = i.number("value")
+        let r = step > 0 ? (v / step).rounded(rule) * step : v.rounded(rule)
+        return ["result": .number(r)]
+    }
+}
+
 package final class RGBColorPatch: Patch {
     package override class var typeID: String { "rgb-color" }
     package override class var title: String { "RGB Color" }

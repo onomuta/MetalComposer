@@ -310,7 +310,7 @@ package enum PatchRegistry {
         ImageImporterPatch.self, TextImagePatch.self, AudioInputPatch.self, AudioSpectrumPatch.self,
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,
-        SmoothPatch.self, IntegratorPatch.self, CounterPatch.self, ConditionalPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
+        SmoothPatch.self, IntegratorPatch.self, CounterPatch.self, ConditionalPatch.self, LogicPatch.self, RangePatch.self, MapRangePatch.self, RoundPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
         RGBColorPatch.self, HSLColorPatch.self,
         CoreImageFilterPatch.self,
         // Consumers
