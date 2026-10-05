@@ -44,6 +44,30 @@ package func drawQuad(_ ctx: RenderContext, corners: [SIMD4<Float>], color: SIMD
     enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
 }
 
+/// Matches `MeshVertex` in ShaderLibrary (32-byte stride).
+package struct MeshVertex {
+    package var position: SIMD4<Float>
+    package var uv: SIMD2<Float>
+}
+
+/// Draws triangles (`vertices`, three per triangle, in model space) with a color and optional image.
+package func drawMesh(_ ctx: RenderContext, _ buffer: MTLBuffer, range: Range<Int>, mvp: simd_float4x4,
+                      color: SIMD4<Float>, texture: MTLTexture?, additive: Bool, depthTest: Bool) {
+    guard !range.isEmpty else { return }
+    let res = ctx.resources
+    var u = QuadUniforms(c0: .zero, c1: .zero, c2: .zero, c3: .zero, color: color, hasTexture: texture == nil ? 0 : 1)
+    var m = mvp
+    let enc = ctx.encoder
+    enc.setRenderPipelineState(additive ? res.meshAdd : res.meshOver)
+    enc.setDepthStencilState(depthTest ? res.depthReadWrite : res.depthOff)
+    enc.setVertexBuffer(buffer, offset: 0, index: 1)
+    enc.setVertexBytes(&m, length: MemoryLayout<simd_float4x4>.stride, index: 2)
+    enc.setFragmentBytes(&u, length: MemoryLayout<QuadUniforms>.stride, index: 0)
+    enc.setFragmentTexture(texture ?? res.whiteTexture, index: 0)
+    enc.setFragmentSamplerState(res.sampler, index: 0)
+    enc.drawPrimitives(type: .triangle, vertexStart: range.lowerBound, vertexCount: range.count)
+}
+
 /// Height 0 means "keep the image's aspect ratio" (square without an image).
 private func resolvedSize(_ i: Inputs, _ tex: MTLTexture?) -> SIMD2<Float> {
     let w = i.float("width")
@@ -115,6 +139,126 @@ package final class SpritePatch: Patch {
         let corners = quadCorners.map { mvp * SIMD4($0.x, $0.y, 0, 1) }
         drawQuad(ctx, corners: corners, color: i.color("color"), texture: tex,
                  additive: i.int("blending") == 1, depthTest: i.int("depth") == 1)
+    }
+}
+
+/// A box in 3D space with a color and an image per face, like Quartz Composer's Cube.
+package final class CubePatch: Patch {
+    package override class var typeID: String { "cube" }
+    package override class var title: String { "Cube" }
+    package override class var category: PatchCategory { .consumer }
+    package override class var summary: String { "Box in 3D space (position, rotation, size) with a color and an image on each face." }
+
+    /// Faces in port order, each placed on the unit cube: (key, name, transform of a unit quad).
+    private static let faces: [(key: String, name: String, transform: simd_float4x4)] = [
+        ("front", "Front", .translation(SIMD3(0, 0, 0.5))),
+        ("back", "Back", .translation(SIMD3(0, 0, -0.5)) * .rotation(degrees: SIMD3(0, 180, 0))),
+        ("left", "Left", .translation(SIMD3(-0.5, 0, 0)) * .rotation(degrees: SIMD3(0, -90, 0))),
+        ("right", "Right", .translation(SIMD3(0.5, 0, 0)) * .rotation(degrees: SIMD3(0, 90, 0))),
+        ("top", "Top", .translation(SIMD3(0, 0.5, 0)) * .rotation(degrees: SIMD3(-90, 0, 0))),
+        ("bottom", "Bottom", .translation(SIMD3(0, -0.5, 0)) * .rotation(degrees: SIMD3(90, 0, 0))),
+    ]
+
+    package override class var inputSpecs: [PortSpec] {
+        [.bool("enable", "Enable", true),
+         .position("x", "X Position"), .position("y", "Y Position"), .position("z", "Z Position"),
+         .angle("rotationX", "X Rotation (°)"), .angle("rotationY", "Y Rotation (°)"), .angle("rotationZ", "Z Rotation (°)"),
+         .number("width", "Width", 0.5, 0...2).limited(min: 0), .number("height", "Height", 0.5, 0...2).limited(min: 0),
+         .number("depth", "Depth", 0.5, 0...2).limited(min: 0)]
+        + faces.flatMap { [PortSpec.color("\($0.key)Color", "\($0.name) Color"), .image("\($0.key)Image", "\($0.name) Image")] }
+        + [.menu("blending", "Blending", ["Over", "Add"]),
+           .menu("depthTest", "Depth Test", ["Off", "On"], 1).setting()]
+    }
+
+    package override func render(_ i: Inputs, _ ctx: RenderContext) {
+        guard i.bool("enable") else { return }
+        let local = simd_float4x4.translation(SIMD3(i.float("x"), i.float("y"), i.float("z")))
+            * simd_float4x4.rotation(degrees: SIMD3(i.float("rotationX"), i.float("rotationY"), i.float("rotationZ")))
+            * simd_float4x4.scale(SIMD3(i.float("width"), i.float("height"), i.float("depth")))
+        let mvp = ctx.projection * ctx.modelView * local
+        for face in Self.faces {
+            let m = mvp * face.transform
+            drawQuad(ctx, corners: quadCorners.map { m * SIMD4($0.x, $0.y, 0, 1) },
+                     color: i.color("\(face.key)Color"), texture: i.image("\(face.key)Image"),
+                     additive: i.int("blending") == 1, depthTest: i.int("depthTest") == 1)
+        }
+    }
+}
+
+/// A cylinder (or cone, with different radii) in 3D space, like Quartz Composer's Cylinder.
+package final class CylinderPatch: Patch {
+    package override class var typeID: String { "cylinder" }
+    package override class var title: String { "Cylinder" }
+    package override class var category: PatchCategory { .consumer }
+    package override class var summary: String { "Cylinder or cone in 3D space. The side image wraps around; the caps have their own images." }
+    package override class var inputSpecs: [PortSpec] {
+        [.bool("enable", "Enable", true),
+         .position("x", "X Position"), .position("y", "Y Position"), .position("z", "Z Position"),
+         .angle("rotationX", "X Rotation (°)"), .angle("rotationY", "Y Rotation (°)"), .angle("rotationZ", "Z Rotation (°)"),
+         .number("topRadius", "Top Radius", 0.25, 0...1).limited(min: 0),
+         .number("bottomRadius", "Bottom Radius", 0.25, 0...1).limited(min: 0),
+         .number("height", "Height", 0.5, 0...2).limited(min: 0),
+         .color("color", "Side Color"), .image("image", "Side Image"),
+         .color("topColor", "Top Color"), .image("topImage", "Top Image"),
+         .color("bottomColor", "Bottom Color"), .image("bottomImage", "Bottom Image"),
+         .menu("blending", "Blending", ["Over", "Add"]),
+         .menu("depthTest", "Depth Test", ["Off", "On"], 1).setting(),
+         PortSpec.number("segments", "Segments", 64, 3...256).limited(3...256).setting()]
+    }
+
+    /// Triangles for the side, then the top cap, then the bottom cap, and where each part starts.
+    package static func mesh(top: Float, bottom: Float, height: Float, segments n: Int)
+        -> (vertices: [MeshVertex], side: Range<Int>, top: Range<Int>, bottom: Range<Int>) {
+        let h = height / 2
+        // Around the axis: u = 0.5 faces the viewer (+z), increasing to the right (+x).
+        func point(_ k: Int, _ r: Float, _ y: Float) -> SIMD4<Float> {
+            let a = 2 * Float.pi * (Float(k) / Float(n) - 0.5)
+            return SIMD4(r * sin(a), y, r * cos(a), 1)
+        }
+        var v: [MeshVertex] = []
+        v.reserveCapacity(n * 12)
+        for k in 0..<n {
+            let u0 = Float(k) / Float(n), u1 = Float(k + 1) / Float(n)
+            let t0 = MeshVertex(position: point(k, top, h), uv: SIMD2(u0, 0))
+            let t1 = MeshVertex(position: point(k + 1, top, h), uv: SIMD2(u1, 0))
+            let b0 = MeshVertex(position: point(k, bottom, -h), uv: SIMD2(u0, 1))
+            let b1 = MeshVertex(position: point(k + 1, bottom, -h), uv: SIMD2(u1, 1))
+            v += [t0, b0, t1, t1, b0, b1]
+        }
+        let side = 0..<v.count
+        // Caps read like Cube's Top and Bottom: the image's top edge toward the back (top cap)
+        // or toward the front (bottom cap).
+        func cap(_ r: Float, _ y: Float, flip: Float) {
+            guard r > 0 else { return }
+            func vertex(_ p: SIMD4<Float>) -> MeshVertex {
+                MeshVertex(position: p, uv: SIMD2(0.5 + p.x / (2 * r), 0.5 + flip * p.z / (2 * r)))
+            }
+            let center = vertex(SIMD4(0, y, 0, 1))
+            for k in 0..<n { v += [center, vertex(point(k, r, y)), vertex(point(k + 1, r, y))] }
+        }
+        cap(top, h, flip: 1)
+        let topRange = side.upperBound..<v.count
+        cap(bottom, -h, flip: -1)
+        return (v, side, topRange, topRange.upperBound..<v.count)
+    }
+
+    package override func render(_ i: Inputs, _ ctx: RenderContext) {
+        guard i.bool("enable") else { return }
+        let mesh = Self.mesh(top: max(0, i.float("topRadius")), bottom: max(0, i.float("bottomRadius")),
+                             height: max(0, i.float("height")), segments: min(max(3, i.int("segments")), 256))
+        guard let buffer = ctx.resources.device.makeBuffer(bytes: mesh.vertices,
+                                                           length: MemoryLayout<MeshVertex>.stride * mesh.vertices.count)
+        else { return }
+        let local = simd_float4x4.translation(SIMD3(i.float("x"), i.float("y"), i.float("z")))
+            * simd_float4x4.rotation(degrees: SIMD3(i.float("rotationX"), i.float("rotationY"), i.float("rotationZ")))
+        let mvp = ctx.projection * ctx.modelView * local
+        let additive = i.int("blending") == 1, depth = i.int("depthTest") == 1
+        drawMesh(ctx, buffer, range: mesh.side, mvp: mvp, color: i.color("color"), texture: i.image("image"),
+                 additive: additive, depthTest: depth)
+        drawMesh(ctx, buffer, range: mesh.top, mvp: mvp, color: i.color("topColor"), texture: i.image("topImage"),
+                 additive: additive, depthTest: depth)
+        drawMesh(ctx, buffer, range: mesh.bottom, mvp: mvp, color: i.color("bottomColor"), texture: i.image("bottomImage"),
+                 additive: additive, depthTest: depth)
     }
 }
 

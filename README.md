@@ -96,12 +96,14 @@ Quartz Composer と同じく、時間で動くパッチ（Patch Time、LFO、Int
 - デモ「Audio Reactive」：スペクトルを Iterator で棒グラフにし、低音に合わせて図形が脈打ちます。
 - 動画の書き出し中も、マイクからはライブの音を読みます（音声ファイルの解析は未対応）。
 
-## Sprite と Billboard
+## Sprite、Billboard、Cube、Cylinder
 
 - **Billboard**：2D の板で、常に画面の正面を向きます（QC の Billboard と同じ）。3D Transformation の中では位置だけが変換に従います。
 - **Sprite**：3D 空間に置く板です。X/Y/Z 位置と X/Y/Z 回転を指定でき、遠近がつきます。
+- **Cube**：3D 空間に置く箱です（QC の Cube と同じ）。位置・回転・幅／高さ／奥行きを指定でき、Front／Back／Left／Right／Top／Bottom の面ごとに色と画像を設定できます。面の画像は、その面を正面から見たときに正しい向きになります。
+- **Cylinder**：3D 空間に置く円柱です（QC の Cylinder と同じ）。上と下の半径を別々に指定でき、片方を 0 にすると円錐になります。側面の画像は一周巻き付き、画像の中央が正面に来ます。上下のふたには別の色と画像を設定でき、Cube の Top／Bottom と同じ向きになります。なめらかさは Segments（既定 64）で変えられます。
 - **座標系**：z = 0 の平面では、x は -1〜1、y は ±(高さ/幅) です（従来と同じ）。カメラは z = 2 に固定で、+z が手前です。
-- **深度**：Sprite と Billboard には「Depth Test」の設定があります（既定は Sprite がオン、Billboard がオフ）。パーティクルは深度を読むだけで書き込みません。Clear は深度もリセットします。比較は lessEqual なので、同じ z に並ぶ 2D のレイヤはこれまでどおりレイヤ順に重なります。半透明の面は深度に書き込まない（Depth Test をオフにする）か、Add ブレンドにしてください。
+- **深度**：Sprite、Billboard、Cube、Cylinder には「Depth Test」の設定があります（既定は Billboard だけオフ、ほかはオン）。パーティクルは深度を読むだけで書き込みません。Clear は深度もリセットします。比較は lessEqual なので、同じ z に並ぶ 2D のレイヤはこれまでどおりレイヤ順に重なります。半透明の面は深度に書き込まない（Depth Test をオフにする）か、Add ブレンドにしてください。
 
 ## アーキテクチャ
 

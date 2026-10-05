@@ -17,6 +17,8 @@ package final class RenderResources {
     package let clearPipeline: MTLRenderPipelineState
     package let spriteOver: MTLRenderPipelineState
     package let spriteAdd: MTLRenderPipelineState
+    package let meshOver: MTLRenderPipelineState
+    package let meshAdd: MTLRenderPipelineState
     package let particleOver: MTLRenderPipelineState
     package let particleAdd: MTLRenderPipelineState
     package let sampler: MTLSamplerState
@@ -50,6 +52,8 @@ package final class RenderResources {
         clearPipeline = try pipeline("fullscreen_vertex", "clear_fragment", .none)
         spriteOver = try pipeline("sprite_vertex", "sprite_fragment", .over)
         spriteAdd = try pipeline("sprite_vertex", "sprite_fragment", .add)
+        meshOver = try pipeline("mesh_vertex", "sprite_fragment", .over)
+        meshAdd = try pipeline("mesh_vertex", "sprite_fragment", .add)
         particleOver = try pipeline("particle_vertex", "particle_fragment", .over)
         particleAdd = try pipeline("particle_vertex", "particle_fragment", .add)
 

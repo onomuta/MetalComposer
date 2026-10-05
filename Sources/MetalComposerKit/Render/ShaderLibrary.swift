@@ -41,6 +41,18 @@ package enum ShaderLibrary {
         return c;
     }
 
+    // Triangle meshes (Cylinder): model-space vertices, shaded like sprites (sprite_fragment reads
+    // the color and texture flag from a QuadUniforms whose corners are unused).
+    struct MeshVertex { float4 position; float2 uv; };
+
+    vertex SpriteOut mesh_vertex(uint vid [[vertex_id]], const device MeshVertex* vertices [[buffer(1)]],
+                                 constant float4x4& mvp [[buffer(2)]]) {
+        SpriteOut o;
+        o.position = mvp * vertices[vid].position;
+        o.uv = vertices[vid].uv;
+        return o;
+    }
+
     struct ParticleInstance { float2 position; float z; float size; float alpha; float4 color; };
     struct ParticleUniforms { float4x4 modelView; float4x4 projection; int hasTexture; };
     struct ParticleOut { float4 position [[position]]; float2 uv; float4 color; };
