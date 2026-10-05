@@ -262,6 +262,71 @@ package final class CylinderPatch: Patch {
     }
 }
 
+/// A sphere in 3D space, like Quartz Composer's Sphere. The image wraps around it as an
+/// equirectangular (latitude/longitude) map, so panoramas and planet textures fit as they are.
+package final class SpherePatch: Patch {
+    package override class var typeID: String { "sphere" }
+    package override class var title: String { "Sphere" }
+    package override class var category: PatchCategory { .consumer }
+    package override class var summary: String { "Sphere in 3D space. The image wraps around it as an equirectangular (latitude/longitude) map." }
+    package override class var inputSpecs: [PortSpec] {
+        [.bool("enable", "Enable", true),
+         .position("x", "X Position"), .position("y", "Y Position"), .position("z", "Z Position"),
+         .angle("rotationX", "X Rotation (°)"), .angle("rotationY", "Y Rotation (°)"), .angle("rotationZ", "Z Rotation (°)"),
+         .number("radius", "Radius", 0.3, 0...1).limited(min: 0),
+         .color("color", "Color"), .image("image", "Image"),
+         .menu("blending", "Blending", ["Over", "Add"]),
+         .menu("depthTest", "Depth Test", ["Off", "On"], 1).setting(),
+         PortSpec.number("segments", "Segments", 64, 6...256).limited(6...256).setting()]
+    }
+
+    /// A unit sphere (radius 1): `segments` around the axis and half as many rings from pole to pole.
+    /// u = 0.5 faces the viewer (+z), increasing to the right (+x); v = 0 at the top pole.
+    package static func mesh(segments n: Int) -> [MeshVertex] {
+        let rings = max(3, n / 2)
+        func vertex(_ k: Int, _ j: Int) -> MeshVertex {
+            let u = Float(k) / Float(n), v = Float(j) / Float(rings)
+            let a = 2 * Float.pi * (u - 0.5), polar = Float.pi * v
+            return MeshVertex(position: SIMD4(sin(polar) * sin(a), cos(polar), sin(polar) * cos(a), 1), uv: SIMD2(u, v))
+        }
+        var out: [MeshVertex] = []
+        out.reserveCapacity(n * rings * 6)
+        for j in 0..<rings {
+            for k in 0..<n {
+                let a = vertex(k, j), b = vertex(k + 1, j), c = vertex(k, j + 1), d = vertex(k + 1, j + 1)
+                // The rows at the poles collapse to triangles.
+                if j > 0 { out += [a, c, b] }
+                if j < rings - 1 { out += [b, c, d] }
+            }
+        }
+        return out
+    }
+
+    private var cachedSegments = 0
+    private var cachedMesh: MTLBuffer?
+    private var cachedCount = 0
+
+    package override func render(_ i: Inputs, _ ctx: RenderContext) {
+        guard i.bool("enable") else { return }
+        // The mesh only depends on the detail level; the radius goes into the transform.
+        let segments = min(max(6, i.int("segments")), 256)
+        if segments != cachedSegments || cachedMesh == nil {
+            let vertices = Self.mesh(segments: segments)
+            cachedMesh = ctx.resources.device.makeBuffer(bytes: vertices, length: MemoryLayout<MeshVertex>.stride * vertices.count)
+            cachedCount = vertices.count
+            cachedSegments = segments
+        }
+        guard let buffer = cachedMesh else { return }
+        let r = max(0, i.float("radius"))
+        let local = simd_float4x4.translation(SIMD3(i.float("x"), i.float("y"), i.float("z")))
+            * simd_float4x4.rotation(degrees: SIMD3(i.float("rotationX"), i.float("rotationY"), i.float("rotationZ")))
+            * simd_float4x4.scale(SIMD3(r, r, r))
+        drawMesh(ctx, buffer, range: 0..<cachedCount, mvp: ctx.projection * ctx.modelView * local,
+                 color: i.color("color"), texture: i.image("image"),
+                 additive: i.int("blending") == 1, depthTest: i.int("depthTest") == 1)
+    }
+}
+
 /// Matches `ParticleInstance` in ShaderLibrary (48-byte stride; `color` starts at 32).
 package struct ParticleInstance {
     package var position: SIMD2<Float>

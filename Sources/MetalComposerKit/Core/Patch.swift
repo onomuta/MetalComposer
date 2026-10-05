@@ -322,7 +322,7 @@ package enum PatchRegistry {
         RGBColorPatch.self, HSLColorPatch.self,
         CoreImageFilterPatch.self,
         // Consumers
-        ClearPatch.self, BillboardPatch.self, SpritePatch.self, CubePatch.self, CylinderPatch.self, ParticleSystemPatch.self, MetalShaderPatch.self,
+        ClearPatch.self, BillboardPatch.self, SpritePatch.self, CubePatch.self, CylinderPatch.self, SpherePatch.self, ParticleSystemPatch.self, MetalShaderPatch.self,
         // Macros
         MacroPatch.self, IteratorPatch.self, RenderInImagePatch.self, Transform3DPatch.self,
         PublishedInputPatch.self, PublishedOutputPatch.self, IteratorVariablesPatch.self,
