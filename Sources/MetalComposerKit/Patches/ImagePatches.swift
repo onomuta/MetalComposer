@@ -81,6 +81,8 @@ package final class TextImagePatch: Patch {
     package override class var summary: String { "Renders a string into an image (white, tint it with Sprite color)." }
     package override class var inputSpecs: [PortSpec] {
         [.string("text", "String", "Hello"), .number("size", "Font Size", 64, 8...200).limited(1...2000),
+         .font("font", "Font"),
+         // Only for the system font; another font's style is part of its name.
          .menu("weight", "Weight", ["Regular", "Medium", "Bold", "Heavy", "Monospaced"], 2)]
     }
     package override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
@@ -90,17 +92,22 @@ package final class TextImagePatch: Patch {
 
     package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
         let text = i.string("text"), size = max(1, i.number("size")), weight = i.int("weight")
-        let newKey = "\(text)|\(size)|\(weight)"
+        let fontName = i.string("font")
+        let newKey = "\(text)|\(size)|\(weight)|\(fontName)"
         if newKey != key {
             key = newKey
-            texture = Self.makeTexture(device: ctx.device, text: text, size: size, weight: weight)
+            texture = Self.makeTexture(device: ctx.device, text: text, size: size, weight: weight, fontName: fontName)
+            // A composition may be opened on a Mac that doesn't have the font installed.
+            setStatus(fontName.isEmpty || NSFont(name: fontName, size: size) != nil
+                      ? nil : "Font \"\(fontName)\" is not installed; using the system font.")
         }
         return ["image": .image(texture)]
     }
 
-    package static func makeTexture(device: MTLDevice, text: String, size: Double, weight: Int) -> MTLTexture? {
+    package static func makeTexture(device: MTLDevice, text: String, size: Double, weight: Int,
+                                    fontName: String = "") -> MTLTexture? {
         guard !text.isEmpty else { return nil }
-        let font: NSFont
+        var font: NSFont
         switch weight {
         case 0: font = .systemFont(ofSize: size, weight: .regular)
         case 1: font = .systemFont(ofSize: size, weight: .medium)
@@ -108,6 +115,7 @@ package final class TextImagePatch: Patch {
         case 4: font = .monospacedSystemFont(ofSize: size, weight: .regular)
         default: font = .systemFont(ofSize: size, weight: .bold)
         }
+        if !fontName.isEmpty, let named = NSFont(name: fontName, size: size) { font = named }
         let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.white])
         let bounds = string.boundingRect(with: CGSize(width: 8192, height: 8192), options: [.usesLineFragmentOrigin])
         let pad = 4

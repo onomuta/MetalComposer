@@ -118,18 +118,19 @@ package final class SpritePatch: Patch {
     }
 }
 
-/// Matches `ParticleInstance` in ShaderLibrary (24-byte stride).
+/// Matches `ParticleInstance` in ShaderLibrary (48-byte stride; `color` starts at 32).
 package struct ParticleInstance {
     package var position: SIMD2<Float>
     package var z: Float
     package var size: Float
     package var alpha: Float
+    /// The emitter's color when the particle was born.
+    package var color: SIMD4<Float>
 }
 
 package struct ParticleUniforms {
     package var modelView: simd_float4x4
     package var projection: simd_float4x4
-    package var color: SIMD4<Float>
     package var hasTexture: Int32
 }
 
@@ -159,6 +160,7 @@ package final class ParticleSystemPatch: Patch {
         var speed: Float
         var direction: Float // radians
         var spread: Float    // radians
+        var color: SIMD4<Float>
     }
 
     /// Emitter history, sorted by time. Kept for `historySeconds` around the latest time so the
@@ -176,7 +178,7 @@ package final class ParticleSystemPatch: Patch {
         let life = max(0.05, i.number("lifetime"))
         record(EmitterSample(time: t, origin: SIMD3(i.float("x"), i.float("y"), i.float("z")),
                              speed: i.float("speed"), direction: i.float("direction") * .pi / 180,
-                             spread: i.float("spread") * .pi / 180))
+                             spread: i.float("spread") * .pi / 180, color: i.color("color")))
 
         let rate = Double(count) / life
         guard t >= 0 else { return [] }
@@ -200,7 +202,8 @@ package final class ParticleSystemPatch: Patch {
             let velocity = SIMD2(cos(angle), sin(angle)) * e.speed * (0.4 + 0.6 * random(2))
             let position = SIMD2(e.origin.x, e.origin.y) + velocity * age + 0.5 * gravity * age * age
             let f = age / lifespan
-            out.append(ParticleInstance(position: position, z: e.origin.z, size: baseSize * (1 - 0.6 * f), alpha: 1 - f))
+            out.append(ParticleInstance(position: position, z: e.origin.z, size: baseSize * (1 - 0.6 * f),
+                                        alpha: 1 - f, color: e.color))
         }
         return out
     }
@@ -238,7 +241,8 @@ package final class ParticleSystemPatch: Patch {
         return EmitterSample(time: t, origin: a.origin + (b.origin - a.origin) * f,
                              speed: a.speed + (b.speed - a.speed) * f,
                              direction: a.direction + (b.direction - a.direction) * f,
-                             spread: a.spread + (b.spread - a.spread) * f)
+                             spread: a.spread + (b.spread - a.spread) * f,
+                             color: a.color + (b.color - a.color) * f)
     }
 
     package override func render(_ i: Inputs, _ ctx: RenderContext) {
@@ -250,8 +254,7 @@ package final class ParticleSystemPatch: Patch {
         else { return }
 
         let tex = i.image("image")
-        var u = ParticleUniforms(modelView: ctx.modelView, projection: ctx.projection,
-                                 color: i.color("color"), hasTexture: tex == nil ? 0 : 1)
+        var u = ParticleUniforms(modelView: ctx.modelView, projection: ctx.projection, hasTexture: tex == nil ? 0 : 1)
         let res = ctx.resources
         let enc = ctx.encoder
         enc.setRenderPipelineState(i.int("blending") == 1 ? res.particleAdd : res.particleOver)

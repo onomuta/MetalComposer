@@ -83,6 +83,27 @@ final class TimeBaseTests: XCTestCase {
         local.restart()
         XCTAssertEqual(run(g, local, at: 7), 0.5, accuracy: 1e-9, "restart resets local time")
     }
+
+    func testParticlesKeepTheColorTheyWereBornWith() {
+        let p = ParticleSystemPatch()
+        let red = Value.color(SIMD4(1, 0, 0, 1)), blue = Value.color(SIMD4(0, 0, 1, 1))
+        // Red for the first second, then blue.
+        var last: [ParticleInstance] = []
+        for f in 0...90 {
+            let t = Double(f) / 60
+            last = p.instances(inputs(p, ["color": t < 1 ? red : blue, "lifetime": .number(2)]), time: t)
+        }
+        let reds = last.filter { $0.color == SIMD4(1, 0, 0, 1) }.count
+        let blues = last.filter { $0.color == SIMD4(0, 0, 1, 1) }.count
+        XCTAssertGreaterThan(reds, 0, "particles born before the switch stay red")
+        XCTAssertGreaterThan(blues, 0, "new particles are blue")
+
+        // Rewinding into the red second gives red particles again. Only the newest frame's
+        // particles take the color wired in now (the current input is recorded at that time).
+        let rewound = p.instances(inputs(p, ["color": blue, "lifetime": .number(2)]), time: 0.5)
+        let stillRed = rewound.filter { $0.color == SIMD4(1, 0, 0, 1) }.count
+        XCTAssertGreaterThan(stillRed, rewound.count * 9 / 10)
+    }
 }
 
 final class IntegratorTests: XCTestCase {
@@ -113,4 +134,5 @@ final class IntegratorTests: XCTestCase {
         integrator.params["patchTime"] = .number(1)
         XCTAssertEqual(step(time: 0, dt: 0), 2, accuracy: 1e-9)
     }
+
 }

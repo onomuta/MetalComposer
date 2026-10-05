@@ -252,6 +252,10 @@ struct ContentView: View {
     // hiding the library never changes the right column.
     @AppStorage("libraryWidth") private var libraryWidth = 220.0
     @AppStorage("rightColumnWidth") private var rightColumnWidth = 460.0
+    // The viewer's height is fixed too (a split view would re-balance whenever the inspector's
+    // content changes, e.g. on every selection).
+    @AppStorage("viewerHeight") private var viewerHeight = 380.0
+    private static let inspectorMinHeight = 200.0
     private static let editorMinWidth = 320.0
 
     var body: some View {
@@ -271,18 +275,22 @@ struct ContentView: View {
                 GraphEditorView(composition: composition)
                     .frame(minWidth: Self.editorMinWidth, maxWidth: .infinity)
                 ColumnResizeHandle(width: $rightColumnWidth, range: 300...900, growsLeftward: true)
-                VSplitView {
+                VStack(spacing: 0) {
                     if state.viewerPoppedOut {
                         PoppedOutViewerBar()
                     } else {
+                        // Shrink the viewer only when the window is too short to fit it.
+                        let height = min(viewerHeight,
+                                         max(240, geo.size.height - RowResizeHandle.height - Self.inspectorMinHeight))
                         ViewerPanel(renderer: state.renderer, playback: state.playback) {
                             state.viewerPoppedOut = true
                             openWindow(id: "viewer")
                         }
-                        .frame(minHeight: 240, idealHeight: 380)
+                        .frame(height: height)
+                        RowResizeHandle(height: $viewerHeight, shown: height, range: 240...1200)
                     }
                     InspectorView(composition: composition)
-                        .frame(minHeight: 200)
+                        .frame(minHeight: Self.inspectorMinHeight, maxHeight: .infinity)
                 }
                 .frame(width: rightWidth)
             }
@@ -404,6 +412,39 @@ private struct ColumnResizeHandle: View {
                     dragStart = start
                     let delta = growsLeftward ? -g.translation.width : g.translation.width
                     width = min(max(start + delta, range.lowerBound), range.upperBound)
+                }
+                .onEnded { _ in dragStart = nil }
+        )
+    }
+}
+
+/// Like `ColumnResizeHandle`, between two views stacked vertically; resizes the one above.
+private struct RowResizeHandle: View {
+    static let height: CGFloat = 7
+
+    @Binding var height: Double
+    /// The height actually shown, which is smaller than `height` when the window is short.
+    var shown: Double
+    var range: ClosedRange<Double>
+
+    @State private var dragStart: Double?
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)
+        }
+        .frame(height: Self.height)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { g in
+                    let start = dragStart ?? shown
+                    dragStart = start
+                    height = min(max(start + g.translation.height, range.lowerBound), range.upperBound)
                 }
                 .onEnded { _ in dragStart = nil }
         )

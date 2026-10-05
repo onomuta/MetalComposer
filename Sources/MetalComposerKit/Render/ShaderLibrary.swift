@@ -41,9 +41,9 @@ package enum ShaderLibrary {
         return c;
     }
 
-    struct ParticleInstance { float2 position; float z; float size; float alpha; };
-    struct ParticleUniforms { float4x4 modelView; float4x4 projection; float4 color; int hasTexture; };
-    struct ParticleOut { float4 position [[position]]; float2 uv; float alpha; };
+    struct ParticleInstance { float2 position; float z; float size; float alpha; float4 color; };
+    struct ParticleUniforms { float4x4 modelView; float4x4 projection; int hasTexture; };
+    struct ParticleOut { float4 position [[position]]; float2 uv; float4 color; };
 
     // Particles are camera-facing: the quad is expanded in view space after the model transform.
     vertex ParticleOut particle_vertex(uint vid [[vertex_id]], uint iid [[instance_id]],
@@ -55,14 +55,13 @@ package enum ShaderLibrary {
         ParticleOut o;
         o.position = u.projection * float4(center.xy + corners[vid] * p.size, center.z, 1.0);
         o.uv = float2(corners[vid].x + 0.5, 0.5 - corners[vid].y);
-        o.alpha = p.alpha;
+        o.color = float4(p.color.rgb, p.color.a * p.alpha);
         return o;
     }
 
     fragment float4 particle_fragment(ParticleOut in [[stage_in]], constant ParticleUniforms& u [[buffer(0)]],
                                       texture2d<float> tex [[texture(0)]], sampler smp [[sampler(0)]]) {
-        float4 c = u.color;
-        c.a *= in.alpha;
+        float4 c = in.color;
         if (u.hasTexture) c *= tex.sample(smp, in.uv);
         else c.a *= smoothstep(0.5, 0.0, length(in.uv - 0.5));
         return c;

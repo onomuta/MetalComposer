@@ -29,6 +29,8 @@ package struct PortSpec {
     package var hidden = false
     package var multiline = false
     package var isFilePath = false
+    /// A font's PostScript name; the inspector shows a font picker.
+    package var isFontName = false
 
     package static func number(_ key: String, _ name: String, _ value: Double = 0, _ range: ClosedRange<Double>? = nil) -> PortSpec {
         PortSpec(key: key, name: name, type: .number, defaultValue: .number(value), range: range)
@@ -43,6 +45,12 @@ package struct PortSpec {
                        multiline: Bool = false, isFilePath: Bool = false) -> PortSpec {
         PortSpec(key: key, name: name, type: .string, defaultValue: .string(value),
                  isPort: isPort, multiline: multiline, isFilePath: isFilePath)
+    }
+    /// A font, stored as its PostScript name ("" = the system font).
+    package static func font(_ key: String, _ name: String) -> PortSpec {
+        var s = PortSpec.string(key, name, "")
+        s.isFontName = true
+        return s
     }
     package static func image(_ key: String, _ name: String) -> PortSpec {
         PortSpec(key: key, name: name, type: .image, defaultValue: .image(nil))

@@ -5,9 +5,10 @@ import XCTest
 final class ParticleTests: XCTestCase {
     /// The shader reads `struct { float2 position; float z; float size; float alpha; }`: 24-byte stride.
     func testInstanceLayoutMatchesShader() {
-        XCTAssertEqual(MemoryLayout<ParticleInstance>.stride, 24)
+        XCTAssertEqual(MemoryLayout<ParticleInstance>.stride, 48)
         XCTAssertEqual(MemoryLayout<ParticleInstance>.offset(of: \.z), 8)
         XCTAssertEqual(MemoryLayout<ParticleInstance>.offset(of: \.alpha), 16)
+        XCTAssertEqual(MemoryLayout<ParticleInstance>.offset(of: \.color), 32)
     }
 
     func testHasZPositionAndOldFilesDefaultToZero() throws {
