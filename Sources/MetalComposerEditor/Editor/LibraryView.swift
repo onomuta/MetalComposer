@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 import SwiftUI
 import MetalComposerKit
 
@@ -12,6 +13,8 @@ struct LibraryView: View {
     @State private var search = ""
     @State private var highlighted = 0
     @FocusState private var searchFocused: Bool
+    /// The input source in use before the search field switched to alphanumeric input.
+    @State private var inputSourceBeforeSearch: TISInputSource?
 
     /// Matching patches. Without a query: sections in registry order. With one: best matches first
     /// (title prefix, then title contains, then description), so Return picks the obvious patch.
@@ -66,8 +69,27 @@ struct LibraryView: View {
                 }
             }
         }
+        // Patch names are English: type them without the IME, then go back to the previous input.
+        .onChange(of: searchFocused) { _, focused in
+            if focused {
+                inputSourceBeforeSearch = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
+                if let ascii = TISCopyCurrentASCIICapableKeyboardInputSource()?.takeRetainedValue() {
+                    TISSelectInputSource(ascii)
+                }
+            } else {
+                restoreInputSource()
+            }
+        }
+        // Adding a patch from the search closes the library, possibly before focus moves.
+        .onDisappear { restoreInputSource() }
         .onAppear { if searchRequest > 0 { focusSearch() } }
         .onChange(of: searchRequest) { _, _ in focusSearch() }
+    }
+
+    private func restoreInputSource() {
+        guard let previous = inputSourceBeforeSearch else { return }
+        TISSelectInputSource(previous)
+        inputSourceBeforeSearch = nil
     }
 
     private func row(_ type: Patch.Type, isHighlighted: Bool) -> some View {

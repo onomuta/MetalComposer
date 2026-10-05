@@ -161,6 +161,7 @@ package final class ParticleSystemPatch: Patch {
         var direction: Float // radians
         var spread: Float    // radians
         var color: SIMD4<Float>
+        var size: Float
     }
 
     /// Emitter history, sorted by time. Kept for `historySeconds` around the latest time so the
@@ -178,7 +179,8 @@ package final class ParticleSystemPatch: Patch {
         let life = max(0.05, i.number("lifetime"))
         record(EmitterSample(time: t, origin: SIMD3(i.float("x"), i.float("y"), i.float("z")),
                              speed: i.float("speed"), direction: i.float("direction") * .pi / 180,
-                             spread: i.float("spread") * .pi / 180, color: i.color("color")))
+                             spread: i.float("spread") * .pi / 180, color: i.color("color"),
+                             size: i.float("size")))
 
         let rate = Double(count) / life
         guard t >= 0 else { return [] }
@@ -188,7 +190,6 @@ package final class ParticleSystemPatch: Patch {
 
         let seed = i.number("seed") * 7.31
         let gravity = SIMD2<Float>(0, i.float("gravity"))
-        let baseSize = i.float("size")
         var out: [ParticleInstance] = []
         out.reserveCapacity(newest - oldest + 1)
         for k in oldest...newest {
@@ -202,7 +203,7 @@ package final class ParticleSystemPatch: Patch {
             let velocity = SIMD2(cos(angle), sin(angle)) * e.speed * (0.4 + 0.6 * random(2))
             let position = SIMD2(e.origin.x, e.origin.y) + velocity * age + 0.5 * gravity * age * age
             let f = age / lifespan
-            out.append(ParticleInstance(position: position, z: e.origin.z, size: baseSize * (1 - 0.6 * f),
+            out.append(ParticleInstance(position: position, z: e.origin.z, size: e.size * (1 - 0.6 * f),
                                         alpha: 1 - f, color: e.color))
         }
         return out
@@ -242,7 +243,8 @@ package final class ParticleSystemPatch: Patch {
                              speed: a.speed + (b.speed - a.speed) * f,
                              direction: a.direction + (b.direction - a.direction) * f,
                              spread: a.spread + (b.spread - a.spread) * f,
-                             color: a.color + (b.color - a.color) * f)
+                             color: a.color + (b.color - a.color) * f,
+                             size: a.size + (b.size - a.size) * f)
     }
 
     package override func render(_ i: Inputs, _ ctx: RenderContext) {

@@ -104,6 +104,18 @@ final class TimeBaseTests: XCTestCase {
         let stillRed = rewound.filter { $0.color == SIMD4(1, 0, 0, 1) }.count
         XCTAssertGreaterThan(stillRed, rewound.count * 9 / 10)
     }
+
+    func testParticlesKeepTheSizeTheyWereBornWith() {
+        let p = ParticleSystemPatch()
+        // Size 0.1 for the first second, then 0.02. Particles shrink to 40% over their life.
+        var last: [ParticleInstance] = []
+        for f in 0...90 {
+            let t = Double(f) / 60
+            last = p.instances(inputs(p, ["size": .number(t < 1 ? 0.1 : 0.02), "lifetime": .number(2)]), time: t)
+        }
+        XCTAssertTrue(last.contains { $0.size > 0.04 }, "particles born before the change stay large")
+        XCTAssertTrue(last.contains { $0.size <= 0.02 }, "new particles are small")
+    }
 }
 
 final class IntegratorTests: XCTestCase {
