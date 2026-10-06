@@ -194,7 +194,7 @@ package final class TextImagePatch: Patch {
     private var cache: [String: (texture: MTLTexture?, used: Int)] = [:]
     private var cacheBytes = 0
     private var useCounter = 0
-    package static let cacheByteLimit = 32_000_000
+    package static let cacheByteLimit = 16_000_000
 
     package override func reset() { cache.removeAll(); cacheBytes = 0 }
 
@@ -207,8 +207,13 @@ package final class TextImagePatch: Patch {
             cache[key]?.used = useCounter
             return ["image": .image(hit.texture)]
         }
-        let texture = Self.makeTexture(device: ctx.device, text: text, size: size, family: family, style: style,
-                                       spacing: spacing)
+        var texture: MTLTexture?
+        if !text.isEmpty {
+            let layout = TextLayout.make(text, font: Self.resolvedFont(family: family, style: style, size: size), spacing: spacing)
+            // On the GPU from cached glyphs; on the CPU for glyphs too large for the glyph atlas.
+            texture = ctx.resources.textRenderer?.render(layout, commandBuffer: ctx.commandBuffer)
+                ?? layout.drawOnCPU(device: ctx.device)
+        }
         let bytes = texture.map { $0.width * $0.height * 4 } ?? 0
         // Drop the least recently used images until the new one fits.
         while cacheBytes + bytes > Self.cacheByteLimit,
@@ -224,106 +229,17 @@ package final class TextImagePatch: Patch {
         return ["image": .image(texture)]
     }
 
-    private typealias TextLayout = (size: CGSize, draw: (CGPoint) -> Void)
-
-    /// Character widths by font, measured once (laying out a character is slow, and Monospaced
-    /// needs the width of every letter and digit to size its cells).
-    private static var advances: [String: [Character: CGFloat]] = [:]
-    private static var cells: [String: (digit: CGFloat, alphanumeric: CGFloat)] = [:]
-
-    private static func fontKey(_ font: NSFont) -> String { "\(font.fontName)|\(font.pointSize)" }
-
-    private static func advance(of c: Character, font: NSFont) -> CGFloat {
-        let key = fontKey(font)
-        if let w = advances[key]?[c] { return w }
-        let w = NSAttributedString(string: String(c), attributes: [.font: font]).size().width
-        if advances.count > 64 { advances.removeAll() }
-        advances[key, default: [:]][c] = w
-        return w
+    /// The font Text Image uses: the family's style, or the system font when the family is missing.
+    package static func resolvedFont(family: String, style: String, size: Double) -> NSFont {
+        font(family: family, style: style, size: size) ?? font(family: "", style: style, size: size)!
     }
 
-    private static func cellWidths(_ font: NSFont) -> (digit: CGFloat, alphanumeric: CGFloat) {
-        let key = fontKey(font)
-        if let c = cells[key] { return c }
-        let digit = "0123456789".map { advance(of: $0, font: font) }.max() ?? 0
-        let alnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".map { advance(of: $0, font: font) }.max() ?? 0
-        let c = (digit, max(digit, alnum))
-        cells[key] = c
-        return c
-    }
-
-    /// The string as the font lays it out (kerning and each character's own width).
-    private static func proportionalLayout(_ text: String, _ attributes: [NSAttributedString.Key: Any]) -> TextLayout {
-        let string = NSAttributedString(string: text, attributes: attributes)
-        let bounds = string.boundingRect(with: CGSize(width: 8192, height: 8192), options: [.usesLineFragmentOrigin])
-        return (bounds.size, { origin in
-            string.draw(with: CGRect(origin: origin, size: bounds.size), options: [.usesLineFragmentOrigin])
-        })
-    }
-
-    /// Characters centered in equal-width cells, so the image doesn't change width or jitter when
-    /// the text changes (counters, clocks, random strings). Works with any font. With
-    /// `allCharacters` false only digits get cells (their widest digit); other characters keep
-    /// their own width.
-    private static func cellLayout(_ text: String, _ attributes: [NSAttributedString.Key: Any],
-                                   allCharacters: Bool) -> TextLayout {
-        let font = attributes[.font] as! NSFont
-        func advance(_ c: Character) -> CGFloat { Self.advance(of: c, font: font) }
-        let cells = Self.cellWidths(font)
-        let digitCell = cells.digit
-        // Every letter and digit fits, plus anything wider in this text (symbols, kana…).
-        let cell = max(cells.alphanumeric, text.map(advance).max() ?? 0)
-        func slot(_ c: Character) -> CGFloat {
-            if allCharacters { return cell }
-            return c.isASCII && c.isNumber ? digitCell : advance(c)
-        }
-        let lineHeight = ceil(font.ascender - font.descender + font.leading)
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        let width = lines.map { $0.reduce(0) { $0 + slot($1) } }.max() ?? 0
-        return (CGSize(width: width, height: lineHeight * CGFloat(lines.count)), { origin in
-            for (row, line) in lines.enumerated() {
-                var x = origin.x
-                let y = origin.y + lineHeight * CGFloat(lines.count - 1 - row)
-                for c in line {
-                    let s = slot(c)
-                    NSAttributedString(string: String(c), attributes: attributes)
-                        .draw(at: CGPoint(x: x + (s - advance(c)) / 2, y: y))
-                    x += s
-                }
-            }
-        })
-    }
-
-    /// A missing family falls back to the system font.
+    /// Draws text on the CPU (for tools without a command buffer). Text Image itself draws on the GPU.
     package static func makeTexture(device: MTLDevice, text: String, size: Double, family: String = "",
                                     style: String = "Bold", spacing: Int = 0) -> MTLTexture? {
         guard !text.isEmpty else { return nil }
-        let font = Self.font(family: family, style: style, size: size)
-            ?? Self.font(family: "", style: style, size: size)!
-        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
-        let pad = 4
-        let layout = spacing == 0 ? proportionalLayout(text, attributes) : cellLayout(text, attributes, allCharacters: spacing == 2)
-        let w = min(Int(ceil(layout.size.width)) + pad * 2, 8192)
-        let h = min(Int(ceil(layout.size.height)) + pad * 2, 8192)
-        guard let cg = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
-                                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
-        layout.draw(CGPoint(x: pad, y: pad))
-        NSGraphicsContext.restoreGraphicsState()
-
-        guard let data = cg.data else { return nil }
-        // Store straight (non-premultiplied) white so tinting and alpha blending stay clean.
-        let px = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
-        for p in 0..<(w * h) {
-            px[p * 4] = 255; px[p * 4 + 1] = 255; px[p * 4 + 2] = 255
-        }
-        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
-        desc.usage = [.shaderRead]
-        guard let tex = device.makeTexture(descriptor: desc) else { return nil }
-        tex.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: data, bytesPerRow: w * 4)
-        return tex
+        let font = resolvedFont(family: family, style: style, size: size)
+        return TextLayout.make(text, font: font, spacing: spacing).drawOnCPU(device: device)
     }
 }
 

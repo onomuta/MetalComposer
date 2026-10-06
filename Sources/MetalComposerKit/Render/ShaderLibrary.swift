@@ -41,6 +41,27 @@ package enum ShaderLibrary {
         return c;
     }
 
+    // Text Image: glyph images from the atlas (coverage in red) placed in pixel coordinates.
+    struct GlyphInstance { float4 destination; float4 source; }; // x, y (top-left), width, height
+    struct GlyphOut { float4 position [[position]]; float2 uv; };
+
+    vertex GlyphOut glyph_vertex(uint vid [[vertex_id]], uint iid [[instance_id]],
+                                 const device GlyphInstance* glyphs [[buffer(0)]],
+                                 constant float4& sizes [[buffer(1)]]) { // target width/height, atlas width/height
+        float2 corner = float2(vid & 1, vid >> 1);
+        GlyphInstance g = glyphs[iid];
+        float2 p = g.destination.xy + corner * g.destination.zw;
+        GlyphOut o;
+        o.position = float4(p.x / sizes.x * 2.0 - 1.0, 1.0 - p.y / sizes.y * 2.0, 0.0, 1.0);
+        o.uv = (g.source.xy + corner * g.source.zw) / sizes.zw;
+        return o;
+    }
+
+    fragment float4 glyph_fragment(GlyphOut in [[stage_in]], texture2d<float> atlas [[texture(0)]]) {
+        constexpr sampler s(filter::nearest);
+        return float4(1.0, 1.0, 1.0, atlas.sample(s, in.uv).r);
+    }
+
     // Triangle meshes (Cylinder): model-space vertices, shaded like sprites (sprite_fragment reads
     // the color and texture flag from a QuadUniforms whose corners are unused).
     struct MeshVertex { float4 position; float2 uv; };

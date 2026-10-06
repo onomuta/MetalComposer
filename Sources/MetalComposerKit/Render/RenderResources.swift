@@ -33,6 +33,10 @@ package final class RenderResources {
     package let ciContext: CIContext
     package let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
 
+    /// Draws Text Image strings on the GPU from cached glyphs (nil if its pipeline failed to build;
+    /// Text Image then draws on the CPU).
+    package private(set) lazy var textRenderer: TextRenderer? = try? TextRenderer(device: device, library: library)
+
     /// Folder that relative file paths (Image Importer) are resolved against: the composition's folder.
     package var baseDirectory: URL?
 
