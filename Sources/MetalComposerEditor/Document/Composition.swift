@@ -155,6 +155,11 @@ final class Composition: ObservableObject {
         checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
         node.params[key] = value
         if let importer = node as? ImageImporterPatch, key == "path" || key == "embed" { updateEmbeddedImage(importer) }
+        // Switching Text Image to a family without the current Weight selects its closest style.
+        if node is TextImagePatch, key == "font", let style = node.params["fontStyle"]?.string,
+           let used = TextImagePatch.resolvedStyle(family: value.string, style: style) {
+            node.params["fontStyle"] = .string(used.name)
+        }
         touch() // published ports may change type or name
     }
 

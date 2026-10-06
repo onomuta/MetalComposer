@@ -129,6 +129,7 @@ package final class Graph {
         guard let type = PatchRegistry.byID[r.type] else { return nil }
         let patch = type.init(id: r.id, position: CGPoint(x: r.x, y: r.y))
         for (k, v) in r.params { patch.params[k] = v }
+        patch.upgradeParams(saved: r.params)
         if let name = r.name { patch.customTitle = name }
         if let sub = r.subgraph { patch.subgraph?.load(sub) }
         return patch

@@ -71,7 +71,7 @@ private struct NodeInspector: View {
 
             if !node.allInputs.isEmpty {
                 Section("Inputs") {
-                    ForEach(node.allInputs.filter { !$0.hidden && !isWeightSetByFont($0) }, id: \.key) { spec in
+                    ForEach(node.allInputs.filter { !$0.hidden }, id: \.key) { spec in
                         inputRow(spec)
                     }
                     if let importer = node as? ImageImporterPatch {
@@ -95,11 +95,6 @@ private struct NodeInspector: View {
             }
         }
         .formStyle(.grouped)
-    }
-
-    /// Text Image's Weight only applies to the system font; another font's style is in its name.
-    private func isWeightSetByFont(_ spec: PortSpec) -> Bool {
-        node is TextImagePatch && spec.key == "weight" && !(node.params["font"]?.string ?? "").isEmpty
     }
 
     @ViewBuilder
@@ -238,6 +233,10 @@ private struct NodeInspector: View {
             LabeledContent(spec.name) {
                 FontPicker(name: stringBinding(spec))
             }
+        } else if spec.isFontStyle {
+            LabeledContent(spec.name) {
+                FontStylePicker(family: node.params["font"]?.string ?? "", style: stringBinding(spec))
+            }
         } else if spec.isFilePath {
             LabeledContent(spec.name) {
                 HStack {
@@ -301,53 +300,47 @@ struct CodeEditor: NSViewRepresentable {
     }
 }
 
-/// Picks an installed font: a menu of families, each with its styles. Stores the PostScript name
-/// ("" = the system font).
+/// Picks a font family ("" = the system font). The style comes from Text Image's Weight.
 struct FontPicker: View {
     @Binding var name: String
 
-    /// Installed families and their styles as (PostScript name, style name). Read once; fonts
-    /// installed while the app runs show up after a restart.
-    private static let families: [(family: String, faces: [(name: String, style: String)])] = {
-        let manager = NSFontManager.shared
-        return manager.availableFontFamilies
-            .filter { !$0.hasPrefix(".") }
-            .map { family in
-                let faces = (manager.availableMembers(ofFontFamily: family) ?? []).compactMap { member -> (String, String)? in
-                    guard let ps = member.first as? String, let style = member[safe: 1] as? String else { return nil }
-                    return (ps, style)
-                }
-                return (family, faces)
-            }
-            .filter { !$0.faces.isEmpty }
-    }()
+    /// Installed families, read once; fonts installed while the app runs show up after a restart.
+    private static let families = NSFontManager.shared.availableFontFamilies.filter { !$0.hasPrefix(".") }
 
     private var label: String {
         if name.isEmpty { return "System Font" }
-        guard let font = NSFont(name: name, size: 12) else { return "\(name) (not installed)" }
-        return font.displayName ?? name
+        if name == TextImagePatch.systemMonospaced || Self.families.contains(name) { return name }
+        return "\(name) (not installed)"
     }
 
     var body: some View {
         Menu(label) {
             Button("System Font") { name = "" }
+            Button(TextImagePatch.systemMonospaced) { name = TextImagePatch.systemMonospaced }
             Divider()
-            ForEach(Self.families, id: \.family) { entry in
-                if entry.faces.count == 1 {
-                    Button(entry.family) { name = entry.faces[0].name }
-                } else {
-                    Menu(entry.family) {
-                        ForEach(entry.faces, id: \.name) { face in
-                            Button(face.style) { name = face.name }
-                        }
-                    }
-                }
+            ForEach(Self.families, id: \.self) { family in
+                Button(family) { name = family }
             }
         }
         .fixedSize()
     }
 }
 
-private extension Array {
-    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+/// Picks one of the styles of `family` (lightest first). A style the family doesn't have shows
+/// which of its styles is used instead.
+struct FontStylePicker: View {
+    var family: String
+    @Binding var style: String
+
+    var body: some View {
+        let styles = TextImagePatch.styles(of: family)
+        let used = TextImagePatch.resolvedStyle(family: family, style: style)
+        let label = used.map { $0.name.caseInsensitiveCompare(style) == .orderedSame ? $0.name : "\(style) → \($0.name)" } ?? style
+        Menu(label) {
+            ForEach(styles, id: \.name) { s in
+                Button(s.name) { style = s.name }
+            }
+        }
+        .fixedSize()
+    }
 }

@@ -29,8 +29,10 @@ package struct PortSpec {
     package var hidden = false
     package var multiline = false
     package var isFilePath = false
-    /// A font's PostScript name; the inspector shows a font picker.
+    /// A font family name; the inspector shows a font picker.
     package var isFontName = false
+    /// A style of the family in the `font` input (e.g. "Light"); the inspector lists the family's styles.
+    package var isFontStyle = false
 
     package static func number(_ key: String, _ name: String, _ value: Double = 0, _ range: ClosedRange<Double>? = nil) -> PortSpec {
         PortSpec(key: key, name: name, type: .number, defaultValue: .number(value), range: range)
@@ -46,10 +48,16 @@ package struct PortSpec {
         PortSpec(key: key, name: name, type: .string, defaultValue: .string(value),
                  isPort: isPort, multiline: multiline, isFilePath: isFilePath)
     }
-    /// A font, stored as its PostScript name ("" = the system font).
+    /// A font family, stored by name ("" = the system font).
     package static func font(_ key: String, _ name: String) -> PortSpec {
         var s = PortSpec.string(key, name, "")
         s.isFontName = true
+        return s
+    }
+    /// A style name of the family chosen in the patch's `font` input.
+    package static func fontStyle(_ key: String, _ name: String, _ value: String) -> PortSpec {
+        var s = PortSpec.string(key, name, value)
+        s.isFontStyle = true
         return s
     }
     package static func image(_ key: String, _ name: String) -> PortSpec {
@@ -304,6 +312,9 @@ package class Patch: ObservableObject, Identifiable {
     package func feedbackOutputs(_ ctx: EvalContext) -> [String: Value] { lastOutputs }
     /// Called when playback restarts.
     package func reset() {}
+    /// Called after a patch is loaded from a file, to rewrite settings saved by older versions.
+    /// `saved` is what the file contained (`params` also holds defaults for everything else).
+    package func upgradeParams(saved: [String: Value]) {}
 
     package func setStatus(_ message: String?) {
         guard message != statusMessage else { return }

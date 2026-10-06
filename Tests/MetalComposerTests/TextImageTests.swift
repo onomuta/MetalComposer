@@ -57,4 +57,51 @@ final class TextImageTests: XCTestCase {
         XCTAssertEqual(one.width, two.width)
         XCTAssertGreaterThan(two.height, one.height * 3 / 2)
     }
+
+    func testWeightListsTheFamilysOwnStylesLightestFirst() throws {
+        // Helvetica Neue ships with macOS. Its UltraLight is lighter than its Thin.
+        let names = TextImagePatch.styles(of: "Helvetica Neue").filter { !$0.italic && $0.width == 0 }.map(\.name)
+        XCTAssertEqual(Array(names.prefix(4)), ["UltraLight", "Thin", "Light", "Regular"])
+        XCTAssertEqual(TextImagePatch.styles(of: "").map(\.name).first, "Ultralight")
+        XCTAssertTrue(TextImagePatch.styles(of: "NoSuchFamily").isEmpty)
+    }
+
+    func testStylesResolveByNameThenByWeight() throws {
+        func ps(_ family: String, _ style: String) -> String? { TextImagePatch.font(family: family, style: style, size: 12)?.fontName }
+        XCTAssertEqual(ps("Helvetica Neue", "Light"), "HelveticaNeue-Light")
+        XCTAssertEqual(ps("Helvetica Neue", "bold"), "HelveticaNeue-Bold", "names match regardless of case")
+        XCTAssertEqual(ps("Helvetica Neue", "Bold Italic"), "HelveticaNeue-BoldItalic")
+        // Missing styles fall back to the closest weight with the same slant at normal width.
+        XCTAssertEqual(ps("Helvetica Neue", "ExtraBold"), "HelveticaNeue-Bold")
+        XCTAssertEqual(ps("Helvetica Neue", "SemiBold"), "HelveticaNeue-Medium")
+        XCTAssertEqual(ps("Courier", "Black"), "Courier-Bold")
+        XCTAssertNil(ps("NoSuchFamily", "Regular"))
+        XCTAssertTrue(try XCTUnwrap(TextImagePatch.font(family: TextImagePatch.systemMonospaced, style: "Regular", size: 12)).isFixedPitch)
+    }
+
+    func testUpgradesSettingsFromOlderVersions() {
+        func upgraded(_ params: [String: Value]) -> [String: Value] {
+            let record = NodeRecord(id: UUID(), type: "text-image", x: 0, y: 0, name: nil, params: params, subgraph: nil)
+            return Graph.makePatch(record)!.params
+        }
+        // 0.6–0.8: a PostScript name.
+        let courier = upgraded(["font": .string("Courier-Bold")])
+        XCTAssertEqual(courier["font"]?.string, "Courier")
+        XCTAssertEqual(courier["fontStyle"]?.string, "Bold")
+        // Not installed: guessed from the name.
+        let missing = upgraded(["font": .string("NoSuchFamily-ExtraBold")])
+        XCTAssertEqual(missing["font"]?.string, "NoSuchFamily")
+        XCTAssertEqual(missing["fontStyle"]?.string, "ExtraBold")
+        // System font with the old Weight menu (Regular, Medium, Bold, Heavy, Monospaced).
+        XCTAssertEqual(upgraded(["weight": .number(0)])["fontStyle"]?.string, "Regular")
+        XCTAssertEqual(upgraded(["weight": .number(3)])["fontStyle"]?.string, "Heavy")
+        let mono = upgraded(["weight": .number(4)])
+        XCTAssertEqual(mono["font"]?.string, TextImagePatch.systemMonospaced)
+        XCTAssertNil(mono["weight"])
+        // Nothing set: the default (System Font, Bold) stays.
+        XCTAssertEqual(upgraded([:])["fontStyle"]?.string, "Bold")
+        XCTAssertEqual(upgraded([:])["font"]?.string, "")
+        // New files are left alone.
+        XCTAssertEqual(upgraded(["font": .string("Courier"), "fontStyle": .string("Regular")])["fontStyle"]?.string, "Regular")
+    }
 }

@@ -244,7 +244,7 @@ package enum Demo: String, CaseIterable, Identifiable {
         let particles = g.put(ParticleSystemPatch.self, 560, 100, ["timeBase": .number(2), "count": .number(900), "lifetime": .number(2.5),
                                                                    "speed": .number(0.25), "gravity": .number(0), "size": .number(0.04),
                                                                    "color": .color(SIMD4(0.4, 0.8, 1, 1))])
-        let label = g.put(TextImagePatch.self, 320, 380, ["size": .number(48), "weight": .number(4)], name: "Time Label")
+        let label = g.put(TextImagePatch.self, 320, 380, ["size": .number(48), "font": .string(TextImagePatch.systemMonospaced), "fontStyle": .string("Regular")], name: "Time Label")
         let show = g.put(BillboardPatch.self, 560, 420, ["y": .number(-0.42), "width": .number(0.3), "color": .color(SIMD4(1, 1, 1, 0.7))])
         for node in [pathX, pathY, particles] { g.link(clock, "value", node, "patchTime") }
         g.link(pathX, "result", particles, "x")
