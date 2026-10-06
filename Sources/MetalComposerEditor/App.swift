@@ -143,6 +143,7 @@ final class AppState: ObservableObject {
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppAppearance.current.apply()
         // Needed when launched as a bare SwiftPM executable (no .app bundle).
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
@@ -182,6 +183,10 @@ public struct MetalComposerApp: App {
                 .onAppear { [state] in delegate.openHandler = { state.open($0) } }
         }
         .defaultSize(width: 1500, height: 900)
+
+        Settings {
+            SettingsView()
+        }
 
         Window("Viewer", id: "viewer") {
             ViewerWindow(state: state)
@@ -448,5 +453,50 @@ private struct RowResizeHandle: View {
                 }
                 .onEnded { _ in dragStart = nil }
         )
+    }
+}
+
+/// The app's light or dark look, chosen in Settings (or following the system).
+enum AppAppearance: String, CaseIterable, Identifiable {
+    case system, light, dark
+
+    static let defaultsKey = "appearance"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "Use System Setting"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    static var current: AppAppearance {
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(AppAppearance.init) ?? .system
+    }
+
+    func apply() {
+        switch self {
+        case .system: NSApp.appearance = nil
+        case .light: NSApp.appearance = NSAppearance(named: .aqua)
+        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+struct SettingsView: View {
+    @AppStorage(AppAppearance.defaultsKey) private var appearance = AppAppearance.system
+
+    var body: some View {
+        Form {
+            Picker("Appearance", selection: $appearance) {
+                ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.radioGroup)
+        }
+        .padding(20)
+        .frame(width: 360)
+        .onChange(of: appearance) { _, new in new.apply() }
     }
 }

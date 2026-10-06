@@ -57,6 +57,10 @@ VERSION=0.1.0 UNIVERSAL=1 SIGN_IDENTITY="Developer ID Application: Takao Onomura
 - **Render In Image**：中身を画面ではなくテクスチャに描画し、画像として出力します。出力を自分自身の画像入力につなぐと**フィードバック**になり、入力側には前フレームの画像が入ります（テクスチャ 2 枚を交互に使っています）。デモ「Feedback Trails」を参照してください。
 - **3D Transformation**：中で描画したものに、移動・回転・拡大縮小を 3D でかけます（回転は X→Y→Z の順）。入れ子にすると変換が掛け合わされるので、階層構造を作れます。
 
+## 設定
+
+- **外観**：Metal Composer › Settings…（⌘,）で、ライト／ダーク／システムの設定に従う、を選べます。グラフのキャンバスは、どれを選んでも暗い色のままです。
+
 ## 時間の扱い（Time Base）
 
 Quartz Composer と同じく、時間で動くパッチ（Patch Time、LFO、Interpolation、Random、Math Expression、Smooth、Integrator、Particle System、Metal Shader、各マクロ）には、インスペクタに **Time Base** の設定があります。
