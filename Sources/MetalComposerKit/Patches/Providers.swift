@@ -53,6 +53,62 @@ package final class RandomPatch: Patch {
     }
 }
 
+package final class RandomStringPatch: Patch {
+    package override class var usesTime: Bool { true }
+    package override class var typeID: String { "random-string" }
+    package override class var title: String { "Random String" }
+    package override class var category: PatchCategory { .provider }
+    package override class var summary: String { "Random string of a given length from the chosen characters. Same seed and time, same string." }
+    package override class var inputSpecs: [PortSpec] {
+        [.number("length", "Length", 8, 1...32).limited(0...1024),
+         .number("seed", "Seed", 0),
+         .number("rate", "Changes / sec", 0, 0...20).limited(min: 0),
+         .bool("uppercase", "Uppercase (A–Z)", true), .bool("lowercase", "Lowercase (a–z)", true),
+         .bool("digits", "Digits (0–9)", true), .bool("symbols", "Symbols (!#$…)", false),
+         .string("extra", "Extra Characters", "")]
+    }
+    package override class var outputSpecs: [PortSpec] { [.string("string", "String")] }
+
+    package static let symbols = Array("!#$%&()*+-./:;<=>?@[]^_{|}~")
+
+    /// The characters to pick from, in a fixed order (so a seed always gives the same string).
+    package static func alphabet(uppercase: Bool, lowercase: Bool, digits: Bool, symbols: Bool, extra: String) -> [Character] {
+        var chars: [Character] = []
+        if uppercase { chars += Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ") }
+        if lowercase { chars += Array("abcdefghijklmnopqrstuvwxyz") }
+        if digits { chars += Array("0123456789") }
+        if symbols { chars += Self.symbols }
+        for c in extra where !chars.contains(c) { chars.append(c) }
+        return chars
+    }
+
+    /// SplitMix64: a well-mixed 64-bit hash, so nearby seeds and positions give unrelated characters.
+    private static func mix(_ x: UInt64) -> UInt64 {
+        var z = x &+ 0x9E37_79B9_7F4A_7C15
+        z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+        z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+        return z ^ (z >> 31)
+    }
+
+    package static func make(length: Int, seed: Double, step: Int, from chars: [Character]) -> String {
+        guard !chars.isEmpty, length > 0 else { return "" }
+        let base = mix(seed.bitPattern ^ mix(UInt64(bitPattern: Int64(step))))
+        return String((0..<length).map { k in chars[Int(mix(base &+ UInt64(k)) % UInt64(chars.count))] })
+    }
+
+    package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let chars = Self.alphabet(uppercase: i.bool("uppercase"), lowercase: i.bool("lowercase"),
+                                  digits: i.bool("digits"), symbols: i.bool("symbols"), extra: i.string("extra"))
+        // Changes / sec 0 keeps one string; otherwise it changes on a time grid, so stopping or
+        // rewinding time (Time Base) shows the same strings again.
+        let rate = max(0, i.number("rate"))
+        let t = (ctx.time * rate).rounded(.down)
+        let step = rate > 0 && t.isFinite ? Int(min(max(t, -9.0e18), 9.0e18)) : 0
+        let length = min(max(0, i.int("length")), 1024)
+        return ["string": .string(Self.make(length: length, seed: i.number("seed"), step: step, from: chars))]
+    }
+}
+
 package final class NumberPatch: Patch {
     package override class var typeID: String { "number" }
     package override class var title: String { "Number" }

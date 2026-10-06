@@ -106,7 +106,13 @@ package struct Inputs {
     package let values: [String: Value]
     package func number(_ k: String) -> Double { values[k]?.number ?? 0 }
     package func float(_ k: String) -> Float { Float(number(k)) }
-    package func int(_ k: String) -> Int { Int(number(k).rounded()) }
+    /// Rounded to the nearest integer. NaN gives 0 and huge values are clamped, so a wire carrying
+    /// e.g. a division by zero can't crash the conversion.
+    package func int(_ k: String) -> Int {
+        let v = number(k).rounded()
+        guard !v.isNaN else { return 0 }
+        return Int(min(max(v, -9.0e18), 9.0e18))
+    }
     package func bool(_ k: String) -> Bool { values[k]?.bool ?? false }
     package func color(_ k: String) -> SIMD4<Float> { values[k]?.color ?? .one }
     package func string(_ k: String) -> String { values[k]?.string ?? "" }
@@ -314,7 +320,7 @@ package class Patch: ObservableObject, Identifiable {
 package enum PatchRegistry {
     package static let all: [Patch.Type] = [
         // Providers
-        PatchTimePatch.self, MousePatch.self, RandomPatch.self, NumberPatch.self,
+        PatchTimePatch.self, MousePatch.self, RandomPatch.self, RandomStringPatch.self, NumberPatch.self,
         ImageImporterPatch.self, TextImagePatch.self, AudioInputPatch.self, AudioSpectrumPatch.self,
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,

@@ -83,7 +83,8 @@ package final class TextImagePatch: Patch {
         [.string("text", "String", "Hello"), .number("size", "Font Size", 64, 8...200).limited(1...2000),
          .font("font", "Font"),
          // Only for the system font; another font's style is part of its name.
-         .menu("weight", "Weight", ["Regular", "Medium", "Bold", "Heavy", "Monospaced"], 2)]
+         .menu("weight", "Weight", ["Regular", "Medium", "Bold", "Heavy", "Monospaced"], 2),
+         .menu("spacing", "Spacing", ["Proportional", "Monospaced Digits", "Monospaced"])]
     }
     package override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
 
@@ -92,11 +93,12 @@ package final class TextImagePatch: Patch {
 
     package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
         let text = i.string("text"), size = max(1, i.number("size")), weight = i.int("weight")
-        let fontName = i.string("font")
-        let newKey = "\(text)|\(size)|\(weight)|\(fontName)"
+        let fontName = i.string("font"), spacing = i.int("spacing")
+        let newKey = "\(text)|\(size)|\(weight)|\(fontName)|\(spacing)"
         if newKey != key {
             key = newKey
-            texture = Self.makeTexture(device: ctx.device, text: text, size: size, weight: weight, fontName: fontName)
+            texture = Self.makeTexture(device: ctx.device, text: text, size: size, weight: weight, fontName: fontName,
+                                       spacing: spacing)
             // A composition may be opened on a Mac that doesn't have the font installed.
             setStatus(fontName.isEmpty || NSFont(name: fontName, size: size) != nil
                       ? nil : "Font \"\(fontName)\" is not installed; using the system font.")
@@ -104,8 +106,52 @@ package final class TextImagePatch: Patch {
         return ["image": .image(texture)]
     }
 
+    private typealias TextLayout = (size: CGSize, draw: (CGPoint) -> Void)
+
+    /// The string as the font lays it out (kerning and each character's own width).
+    private static func proportionalLayout(_ text: String, _ attributes: [NSAttributedString.Key: Any]) -> TextLayout {
+        let string = NSAttributedString(string: text, attributes: attributes)
+        let bounds = string.boundingRect(with: CGSize(width: 8192, height: 8192), options: [.usesLineFragmentOrigin])
+        return (bounds.size, { origin in
+            string.draw(with: CGRect(origin: origin, size: bounds.size), options: [.usesLineFragmentOrigin])
+        })
+    }
+
+    /// Characters centered in equal-width cells, so the image doesn't change width or jitter when
+    /// the text changes (counters, clocks, random strings). Works with any font. With
+    /// `allCharacters` false only digits get cells (their widest digit); other characters keep
+    /// their own width.
+    private static func cellLayout(_ text: String, _ attributes: [NSAttributedString.Key: Any],
+                                   allCharacters: Bool) -> TextLayout {
+        func advance(_ c: Character) -> CGFloat { NSAttributedString(string: String(c), attributes: attributes).size().width }
+        let digitCell = "0123456789".map(advance).max() ?? 0
+        // Every letter and digit fits, plus anything wider in this text (symbols, kana…).
+        let alphanumerics = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+        let cell = (alphanumerics + Array(text)).map(advance).max() ?? 0
+        func slot(_ c: Character) -> CGFloat {
+            if allCharacters { return cell }
+            return c.isASCII && c.isNumber ? digitCell : advance(c)
+        }
+        let font = attributes[.font] as! NSFont
+        let lineHeight = ceil(font.ascender - font.descender + font.leading)
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let width = lines.map { $0.reduce(0) { $0 + slot($1) } }.max() ?? 0
+        return (CGSize(width: width, height: lineHeight * CGFloat(lines.count)), { origin in
+            for (row, line) in lines.enumerated() {
+                var x = origin.x
+                let y = origin.y + lineHeight * CGFloat(lines.count - 1 - row)
+                for c in line {
+                    let s = slot(c)
+                    NSAttributedString(string: String(c), attributes: attributes)
+                        .draw(at: CGPoint(x: x + (s - advance(c)) / 2, y: y))
+                    x += s
+                }
+            }
+        })
+    }
+
     package static func makeTexture(device: MTLDevice, text: String, size: Double, weight: Int,
-                                    fontName: String = "") -> MTLTexture? {
+                                    fontName: String = "", spacing: Int = 0) -> MTLTexture? {
         guard !text.isEmpty else { return nil }
         var font: NSFont
         switch weight {
@@ -116,18 +162,17 @@ package final class TextImagePatch: Patch {
         default: font = .systemFont(ofSize: size, weight: .bold)
         }
         if !fontName.isEmpty, let named = NSFont(name: fontName, size: size) { font = named }
-        let string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.white])
-        let bounds = string.boundingRect(with: CGSize(width: 8192, height: 8192), options: [.usesLineFragmentOrigin])
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
         let pad = 4
-        let w = min(Int(ceil(bounds.width)) + pad * 2, 8192)
-        let h = min(Int(ceil(bounds.height)) + pad * 2, 8192)
+        let layout = spacing == 0 ? proportionalLayout(text, attributes) : cellLayout(text, attributes, allCharacters: spacing == 2)
+        let w = min(Int(ceil(layout.size.width)) + pad * 2, 8192)
+        let h = min(Int(ceil(layout.size.height)) + pad * 2, 8192)
         guard let cg = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
                                  space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(cgContext: cg, flipped: false)
-        string.draw(with: CGRect(x: CGFloat(pad), y: CGFloat(pad), width: bounds.width, height: bounds.height),
-                    options: [.usesLineFragmentOrigin])
+        layout.draw(CGPoint(x: pad, y: pad))
         NSGraphicsContext.restoreGraphicsState()
 
         guard let data = cg.data else { return nil }

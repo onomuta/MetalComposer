@@ -63,7 +63,7 @@ VERSION=0.1.0 UNIVERSAL=1 SIGN_IDENTITY="Developer ID Application: Takao Onomura
 
 ## 時間の扱い（Time Base）
 
-Quartz Composer と同じく、時間で動くパッチ（Patch Time、LFO、Interpolation、Random、Math Expression、Smooth、Integrator、Particle System、Metal Shader、各マクロ）には、インスペクタに **Time Base** の設定があります。
+Quartz Composer と同じく、時間で動くパッチ（Patch Time、LFO、Interpolation、Random、Random String、Math Expression、Smooth、Integrator、Particle System、Metal Shader、各マクロ）には、インスペクタに **Time Base** の設定があります。
 
 - **Parent**（既定）：親の時間（ルートなら再生時間）で動きます。
 - **Local**：そのパッチが動き始めた時点を 0 として数えます。
@@ -80,6 +80,7 @@ Quartz Composer と同じく、時間で動くパッチ（Patch Time、LFO、Int
 - **Range**：値を最小〜最大の範囲に収めます。範囲外の値は、端で止める（Clamp）、反対側から繰り返す（Wrap）、折り返す（Mirror）から選べます。
 - **Map Range**：ある範囲の値を別の範囲に変換します（例：0〜1 を -1〜1 に）。Clamp をオンにすると、出力が変換先の範囲を超えません。
 - **Round**：四捨五入（Round）、切り捨て（Floor）、切り上げ（Ceil）、0 方向への切り捨て（Truncate）をします。Step を指定すると、その倍数に丸めます（例：Step 0.25 なら 0.25 刻み）。
+- **Random String**：ランダムな文字列を作ります。Length（桁数）、Seed、使う文字（大文字・小文字・数字・記号、Extra Characters で任意の文字を追加）を指定できます。同じ Seed なら同じ文字列です。Changes / sec を 0 より大きくすると、1 秒にその回数だけ変わります。時間の関数なので、Time Base で止める・巻き戻すと同じ文字列に戻ります。
 
 ## Structure（配列）
 
@@ -159,6 +160,7 @@ player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer,
 - **パラメータ**：作品のトップに置いた **Macro Input** が公開パラメータになります。エディタでは Macro Input の「Default Value」で既定値を決められます。
 - **ファイルの場所**：Image Importer のファイルは、作品と同じフォルダの中に置くと相対パスで保存されます。作品のフォルダごと素材フォルダに移しても、そのまま読めます。
 - **Text Image のフォント**：インスペクタの **Font** で、Mac に入っているフォントをファミリーとスタイル（Light、Bold など）から選べます。System Font のときだけ Weight が使えます。フォントは名前で保存されるので、作品を開く Mac にも同じフォントが入っている必要があります。入っていなければシステムフォントで描き、その旨を表示します（組み込み先では `problems` に出ます）。
+- **Text Image の文字間隔**：**Spacing** で、Proportional（フォントどおり）、Monospaced Digits（数字だけ同じ幅。カウンターや時計の数字が変わっても揺れません）、Monospaced（すべての文字を同じ幅のマスに置きます。Random String の文字が変わっても画像の幅が変わりません）を選べます。どのフォントでも使えます。Monospaced のマスは一番幅の広い文字（W など）に合わせるので、等幅フォントより字間が広く見えます。詰めたいときは等幅フォント（Weight の Monospaced や SF Mono など）を選んでください。
 - **画像の埋め込み**：Image Importer の **Embed in Composition** をオンにすると、画像ファイルの中身を作品に保存します。元のファイルがなくても、作品 1 つで持ち運べます。読み込みはファイルより 2〜3 倍遅く、作品も画像より 3 割ほど大きくなるので、ロゴやテクスチャなど数 MB までの画像に向いています（10MB を超えるとインスペクタに注意が出ます）。埋め込み後に元のファイルを変えても作品には反映されないので、反映するにはファイルを選び直します。0.4.1 以前の版で開くと、埋め込んだ画像は使われず、ファイルから読みます。
 - **問題の確認**：画像が見つからない、シェーダのエラーなどは `problems` で取得できます。新しい Metal Composer で追加されたパッチなど、このエンジンが知らないパッチは読み飛ばし（つながりも外れます）、その種類を `problems` に含めます。エディタで開いたときは警告を出します。
 - **Mouse パッチ**：組み込み先では、位置が常に中央になります。
