@@ -105,3 +105,27 @@ final class TextImageTests: XCTestCase {
         XCTAssertEqual(upgraded(["font": .string("Courier"), "fontStyle": .string("Regular")])["fontStyle"]?.string, "Regular")
     }
 }
+
+extension TextImageTests {
+    /// Inside an Iterator one Text Image shows a different string on each pass; each string should
+    /// be rendered once and then reused, not re-rendered every pass.
+    func testReusesImagesForStringsItHasRendered() throws {
+        let patch = TextImagePatch()
+        let a1 = try XCTUnwrap(renderText(patch, "alpha")), b1 = try XCTUnwrap(renderText(patch, "beta"))
+        let a2 = try XCTUnwrap(renderText(patch, "alpha")), b2 = try XCTUnwrap(renderText(patch, "beta"))
+        XCTAssertTrue(a1 === a2)
+        XCTAssertTrue(b1 === b2)
+        XCTAssertFalse(a1 === b1)
+    }
+
+    private func renderText(_ patch: TextImagePatch, _ text: String) throws -> MTLTexture? {
+        let resources = try RenderResources(device: try XCTUnwrap(MTLCreateSystemDefaultDevice()))
+        let ctx = EvalContext(resources: resources, commandBuffer: resources.queue.makeCommandBuffer()!,
+                              time: 0, deltaTime: 1.0 / 60, viewportSize: CGSize(width: 64, height: 64),
+                              mouse: .zero, mouseDown: false)
+        var inputs: [String: Value] = [:]
+        for spec in patch.allInputs { inputs[spec.key] = spec.defaultValue }
+        inputs["text"] = .string(text)
+        return patch.evaluate(Inputs(values: inputs), ctx)["image"]?.image
+    }
+}

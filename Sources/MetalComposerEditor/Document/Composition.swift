@@ -63,13 +63,17 @@ final class Composition: ObservableObject {
 
     /// Records the current state so the next edit can be undone. Repeated edits with the same
     /// `coalesce` key in quick succession (slider drags, typing) collapse into one undo step.
-    func checkpoint(_ actionName: String, coalesce key: String? = nil) {
+    /// Records an undo step before a change. Returns false when the change joins the previous step
+    /// (e.g. the same knob dragged again within a second).
+    @discardableResult
+    func checkpoint(_ actionName: String, coalesce key: String? = nil) -> Bool {
         let um = undoManager
-        guard !um.isUndoing, !um.isRedoing else { return }
+        guard !um.isUndoing, !um.isRedoing else { return false }
         let now = Date()
         defer { lastCoalesceKey = key; lastCheckpoint = now }
-        if let key, key == lastCoalesceKey, now.timeIntervalSince(lastCheckpoint) < 1 { return }
+        if let key, key == lastCoalesceKey, now.timeIntervalSince(lastCheckpoint) < 1 { return false }
         register(snapshot: root.record(), on: um, name: actionName)
+        return true
     }
 
     private func register(snapshot: GraphRecord, on um: UndoManager, name: String) {
@@ -152,7 +156,8 @@ final class Composition: ObservableObject {
     }
 
     func setParam(_ node: Patch, _ key: String, _ value: Value) {
-        checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
+        let newUndoStep = checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
+        let portsBefore = Self.portSignature(node)
         node.params[key] = value
         if let importer = node as? ImageImporterPatch, key == "path" || key == "embed" { updateEmbeddedImage(importer) }
         // Switching Text Image to a family without the current Weight selects its closest style.
@@ -160,7 +165,15 @@ final class Composition: ObservableObject {
            let used = TextImagePatch.resolvedStyle(family: value.string, style: style) {
             node.params["fontStyle"] = .string(used.name)
         }
-        touch() // published ports may change type or name
+        // Most changes only affect this patch, whose inspector observes it. Refresh the whole editor
+        // (graph, menus) only when ports change (counts, published port names and types) or a new
+        // undo step needs its menu title; refreshing on every knob movement made dragging slow.
+        // Comments draw their text and color on the canvas.
+        if newUndoStep || node is PublishedPortPatch || node is CommentPatch || Self.portSignature(node) != portsBefore { touch() }
+    }
+
+    private static func portSignature(_ node: Patch) -> [String] {
+        (node.inputPorts + node.outputPorts).map { "\($0.key)|\($0.name)|\($0.type)" }
     }
 
     /// Copies the Image Importer's file into the composition while Embed is on, and drops the copy

@@ -88,3 +88,25 @@ final class EditingTests: XCTestCase {
         XCTAssertEqual(loaded.size.width, 300)
     }
 }
+
+extension EditingTests {
+    /// Dragging a knob changes a value many times a second; only the first change of a drag (a new
+    /// undo step) or a change of ports should refresh the whole editor.
+    func testValueChangesRefreshTheEditorOnlyWhenNeeded() {
+        let c = Composition()
+        let math = MathPatch()
+        let maker = StructureMakerPatch()
+        c.graph.nodes += [math, maker]
+        var refreshes = 0
+        let watch = c.objectWillChange.sink { refreshes += 1 }
+        defer { watch.cancel() }
+        c.setParam(math, "b", .number(1))
+        XCTAssertEqual(refreshes, 1, "a new undo step updates the Undo menu")
+        c.setParam(math, "b", .number(2))
+        c.setParam(math, "b", .number(3))
+        XCTAssertEqual(refreshes, 1, "the same knob again joins the step and needs no refresh")
+        c.setParam(maker, "count", .number(5))
+        c.setParam(maker, "count", .number(6))
+        XCTAssertEqual(refreshes, 3, "changing the number of inputs changes the ports")
+    }
+}

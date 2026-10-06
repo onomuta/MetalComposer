@@ -19,8 +19,9 @@ package final class Evaluator {
 
     package func inputs(for node: Patch) -> Inputs {
         var values: [String: Value] = [:]
+        let params = node.params // read once: it's @Published, so each access goes through Combine
         for spec in node.allInputs {
-            var value = node.params[spec.key] ?? spec.defaultValue
+            var value = params[spec.key] ?? spec.defaultValue
             if spec.isPort, let src = incoming[PortRef(node: node.id, port: spec.key)],
                let srcNode = lookup[src.node], let out = outputs(of: srcNode)[src.port] {
                 value = out

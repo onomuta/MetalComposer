@@ -4,7 +4,9 @@ import SwiftUI
 import MetalComposerKit
 
 struct LibraryView: View {
-    @ObservedObject var composition: Composition
+    // Not observed: the list doesn't depend on the document, and re-diffing every row on each
+    // document change was a large part of the cost of editing a value.
+    let composition: Composition
     /// Changes whenever ⌘↩ asks for the search field.
     var searchRequest: Int
     /// Called after Return adds the highlighted patch (the window closes the library).

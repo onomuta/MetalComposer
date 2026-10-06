@@ -106,6 +106,16 @@ package final class TextImagePatch: Patch {
     /// The styles Weight offers for a family, lightest first (each upright style before its italic).
     /// Empty when the family isn't installed.
     package static func styles(of family: String) -> [FontStyle] {
+        if let known = stylesByFamily[family] { return known }
+        let found = findStyles(of: family)
+        // Fonts installed while the app runs show up after a restart (like the Font menu).
+        if !found.isEmpty { stylesByFamily[family] = found }
+        return found
+    }
+
+    private static var stylesByFamily: [String: [FontStyle]] = [:]
+
+    private static func findStyles(of family: String) -> [FontStyle] {
         if family.isEmpty || family == systemMonospaced {
             return systemWeights.map { FontStyle(postScriptName: "", name: $0.name, weight: $0.weight.rawValue, width: 0, italic: false) }
         }
@@ -177,25 +187,70 @@ package final class TextImagePatch: Patch {
 
     package override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
 
-    private var key = ""
-    private var texture: MTLTexture?
+    /// Recently rendered images by settings. Several are kept so a Text Image inside an Iterator,
+    /// which shows a different string on each pass, renders each string once instead of every pass.
+    /// Bounded by memory: images of large text are big, and a string that changes many times a
+    /// second would otherwise fill the cache with images that are never shown again.
+    private var cache: [String: (texture: MTLTexture?, used: Int)] = [:]
+    private var cacheBytes = 0
+    private var useCounter = 0
+    package static let cacheByteLimit = 32_000_000
+
+    package override func reset() { cache.removeAll(); cacheBytes = 0 }
 
     package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
         let text = i.string("text"), size = max(1, i.number("size")), style = i.string("fontStyle")
         let family = i.string("font"), spacing = i.int("spacing")
-        let newKey = "\(text)|\(size)|\(style)|\(family)|\(spacing)"
-        if newKey != key {
-            key = newKey
-            texture = Self.makeTexture(device: ctx.device, text: text, size: size, family: family, style: style,
-                                       spacing: spacing)
-            // A composition may be opened on a Mac that doesn't have the font installed.
-            setStatus(Self.font(family: family, style: style, size: size) != nil
-                      ? nil : "Font \"\(family)\" is not installed; using the system font.")
+        let key = "\(text)|\(size)|\(style)|\(family)|\(spacing)"
+        useCounter += 1
+        if let hit = cache[key] {
+            cache[key]?.used = useCounter
+            return ["image": .image(hit.texture)]
         }
+        let texture = Self.makeTexture(device: ctx.device, text: text, size: size, family: family, style: style,
+                                       spacing: spacing)
+        let bytes = texture.map { $0.width * $0.height * 4 } ?? 0
+        // Drop the least recently used images until the new one fits.
+        while cacheBytes + bytes > Self.cacheByteLimit,
+              let oldest = cache.min(by: { $0.value.used < $1.value.used }) {
+            cacheBytes -= oldest.value.texture.map { $0.width * $0.height * 4 } ?? 0
+            cache[oldest.key] = nil
+        }
+        cache[key] = (texture, useCounter)
+        cacheBytes += bytes
+        // A composition may be opened on a Mac that doesn't have the font installed.
+        setStatus(Self.font(family: family, style: style, size: size) != nil
+                  ? nil : "Font \"\(family)\" is not installed; using the system font.")
         return ["image": .image(texture)]
     }
 
     private typealias TextLayout = (size: CGSize, draw: (CGPoint) -> Void)
+
+    /// Character widths by font, measured once (laying out a character is slow, and Monospaced
+    /// needs the width of every letter and digit to size its cells).
+    private static var advances: [String: [Character: CGFloat]] = [:]
+    private static var cells: [String: (digit: CGFloat, alphanumeric: CGFloat)] = [:]
+
+    private static func fontKey(_ font: NSFont) -> String { "\(font.fontName)|\(font.pointSize)" }
+
+    private static func advance(of c: Character, font: NSFont) -> CGFloat {
+        let key = fontKey(font)
+        if let w = advances[key]?[c] { return w }
+        let w = NSAttributedString(string: String(c), attributes: [.font: font]).size().width
+        if advances.count > 64 { advances.removeAll() }
+        advances[key, default: [:]][c] = w
+        return w
+    }
+
+    private static func cellWidths(_ font: NSFont) -> (digit: CGFloat, alphanumeric: CGFloat) {
+        let key = fontKey(font)
+        if let c = cells[key] { return c }
+        let digit = "0123456789".map { advance(of: $0, font: font) }.max() ?? 0
+        let alnum = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".map { advance(of: $0, font: font) }.max() ?? 0
+        let c = (digit, max(digit, alnum))
+        cells[key] = c
+        return c
+    }
 
     /// The string as the font lays it out (kerning and each character's own width).
     private static func proportionalLayout(_ text: String, _ attributes: [NSAttributedString.Key: Any]) -> TextLayout {
@@ -212,16 +267,16 @@ package final class TextImagePatch: Patch {
     /// their own width.
     private static func cellLayout(_ text: String, _ attributes: [NSAttributedString.Key: Any],
                                    allCharacters: Bool) -> TextLayout {
-        func advance(_ c: Character) -> CGFloat { NSAttributedString(string: String(c), attributes: attributes).size().width }
-        let digitCell = "0123456789".map(advance).max() ?? 0
+        let font = attributes[.font] as! NSFont
+        func advance(_ c: Character) -> CGFloat { Self.advance(of: c, font: font) }
+        let cells = Self.cellWidths(font)
+        let digitCell = cells.digit
         // Every letter and digit fits, plus anything wider in this text (symbols, kana…).
-        let alphanumerics = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
-        let cell = (alphanumerics + Array(text)).map(advance).max() ?? 0
+        let cell = max(cells.alphanumeric, text.map(advance).max() ?? 0)
         func slot(_ c: Character) -> CGFloat {
             if allCharacters { return cell }
             return c.isASCII && c.isNumber ? digitCell : advance(c)
         }
-        let font = attributes[.font] as! NSFont
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
         let width = lines.map { $0.reduce(0) { $0 + slot($1) } }.max() ?? 0
