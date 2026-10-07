@@ -80,6 +80,15 @@ struct GraphEditorView: View {
     @State private var hoveredPort: PortHit?
     @State private var editingComment: UUID?
     @FocusState private var focused: Bool
+    #if !os(macOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
+    /// iPhone (either orientation): the add-patch menu is a sheet rather than a popover, which
+    /// could leave too little room around the finger (most of all with the keyboard up).
+    private var addMenuIsSheet: Bool { horizontalSizeClass == .compact || verticalSizeClass == .compact }
+    #else
+    private let addMenuIsSheet = false
+    #endif
     /// The long-press menu (touch): where it was opened.
     @State private var touchMenu: TouchMenu?
     @State private var longPress: Task<Void, Never>?
@@ -169,9 +178,14 @@ struct GraphEditorView: View {
             .popover(isPresented: Binding(get: { touchMenu != nil }, set: { if !$0 { touchMenu = nil } }),
                      attachmentAnchor: .rect(.rect(CGRect(origin: touchMenu?.point ?? .zero, size: .zero)))) {
                 touchMenuContent
-                    // Stay a popover at the finger on iPhone too, rather than a sheet.
-                    .presentationCompactAdaptation(.popover)
+                    // On iPhone the patch menu stays a small popover at the finger; adding a patch
+                    // (search and a long list) becomes a sheet.
+                    .presentationCompactAdaptation(touchMenu?.onPatch == false ? .sheet : .popover)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
             }
+            // The menu takes over the touch that opened it, so that drag never ends by itself.
+            .onChange(of: touchMenu == nil) { _, closed in if closed { drag = nil } }
             #endif
             .dropDestination(for: URL.self) { urls, location in
                 let images = urls.filter { url in
@@ -524,9 +538,7 @@ struct GraphEditorView: View {
                                 insertionPoint: CGPoint(x: menu.graphPoint.x - 20, y: menu.graphPoint.y - 10),
                                 onAdd: { touchMenu = nil })
                 }
-                // Up to 480 tall; the list gives way when there is less room (iPhone).
-                .frame(width: 320)
-                .frame(minHeight: 220, idealHeight: 480, maxHeight: 480)
+                .modifier(AddMenuFrame(isSheet: addMenuIsSheet))
             }
         }
     }
@@ -1022,3 +1034,16 @@ private struct NoteEditor: UIViewRepresentable {
     }
 }
 #endif
+
+/// The add-patch menu's size: a fixed popover on iPad, the sheet's full size on iPhone.
+private struct AddMenuFrame: ViewModifier {
+    let isSheet: Bool
+
+    func body(content: Content) -> some View {
+        if isSheet {
+            content.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            content.frame(width: 320, height: 480)
+        }
+    }
+}
