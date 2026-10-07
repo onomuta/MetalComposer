@@ -1,15 +1,19 @@
 #if !os(macOS)
+import Combine
 import SwiftUI
+import UniformTypeIdentifiers
 import MetalComposerKit
 
 /// The whole editor (library, graph, viewer, inspector) for an iPad app: opens `url`, or a new
-/// composition when it is nil, and saves back to it. New compositions are saved in the app's
-/// Documents folder. `onClose` gets the file the composition was saved to.
+/// composition when it is nil. Changes are saved automatically; new compositions go to the app's
+/// Documents folder (Files › On My iPad). The title renames the file, and its menu duplicates,
+/// saves elsewhere or shares it; ‹ closes it. `onClose` gets the file the composition ended up in.
 public struct EditorScreen: View {
     private let url: URL?
     private let onClose: (URL?) -> Void
-    @StateObject private var state = AppState()
-    @State private var accessing: URL?
+    @StateObject private var session = EditorSession()
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var savingAs = false
 
     public init(url: URL?, onClose: @escaping (URL?) -> Void) {
         self.url = url
@@ -17,59 +21,179 @@ public struct EditorScreen: View {
     }
 
     public var body: some View {
+        let state = session.state
         NavigationStack {
             ContentView(state: state, composition: state.composition)
+                .navigationTitle(Binding(get: { session.title }, set: { session.rename(to: $0) }))
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") {
-                            save()
-                            onClose(state.composition.fileURL)
-                        }
+                .toolbarRole(.editor)
+                .toolbarTitleMenu {
+                    RenameButton()
+                    Button { session.duplicate() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+                    Button { savingAs = true } label: { Label("Save As…", systemImage: "folder") }
+                    if let url = state.composition.fileURL {
+                        ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
                     }
+                }
+                // The editor role's ‹ button closes the editor, like a document app's.
+                .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
                         Button { state.showExport = true } label: { Label("Export Movie", systemImage: "film") }
-                        Button { save() } label: { Label("Save", systemImage: "square.and.arrow.down") }
-                            .keyboardShortcut("s")
                     }
                 }
                 .modifier(EditCommands(state: state))
+                .background {
+                    Button("Save") { session.save() }.keyboardShortcut("s").hidden()
+                }
+                .fileExporter(isPresented: $savingAs, document: CompositionFile(data: session.currentData() ?? Data()),
+                              contentType: .metalComposition, defaultFilename: session.title) { result in
+                    if case .success(let url) = result { session.adopt(url) }
+                }
         }
-        .onAppear(perform: load)
-        .onDisappear {
-            accessing?.stopAccessingSecurityScopedResource()
-            accessing = nil
-        }
+        .onAppear { session.load(url) }
+        // However the editor is closed: save, give back file access, report the file.
+        .onDisappear { onClose(session.close()) }
+        // Save before the app may be suspended or closed.
+        .onChange(of: scenePhase) { _, phase in if phase != .active { session.save() } }
+    }
+}
+
+/// The editor's link to its file: access to it, saving (automatically, a moment after each
+/// change), renaming and copying.
+final class EditorSession: ObservableObject {
+    let state = AppState()
+    /// What the file holds, to skip saving when nothing changed.
+    private var savedData: Data?
+    /// A file from outside the app's folder, readable and writable only while access is held.
+    private var accessing: URL?
+    private var subscriptions: Set<AnyCancellable> = []
+
+    private var composition: Composition { state.composition }
+
+    init() {
+        composition.$fileURL.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &subscriptions)
+        composition.objectWillChange
+            .debounce(for: .seconds(2), scheduler: RunLoop.main)
+            .sink { [weak self] in self?.save() }
+            .store(in: &subscriptions)
     }
 
-    private func load() {
-        guard let url else {
+    var title: String { composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Untitled" }
+
+    func load(_ url: URL?) {
+        if let url {
+            access(url)
+            state.open(url)
+        } else {
             state.newComposition()
+        }
+        // A new composition gets a file only once it is changed.
+        savedData = currentData()
+    }
+
+    func currentData() -> Data? { try? composition.encoded() }
+
+    /// Writes the composition if it changed since the last save; a new one goes to Documents.
+    func save() {
+        guard let data = currentData(), data != savedData else { return }
+        guard let url = composition.fileURL ?? Self.unusedURL(named: "Untitled") else { return }
+        if state.write(to: url) { savedData = data }
+    }
+
+    /// Saves, gives back file access, and returns where the composition is.
+    func close() -> URL? {
+        save()
+        accessing?.stopAccessingSecurityScopedResource()
+        accessing = nil
+        return composition.fileURL
+    }
+
+    /// Renames the file in place (a new composition is saved under the name).
+    func rename(to newName: String) {
+        let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        guard !name.isEmpty, name != title else { return }
+        guard let url = composition.fileURL else {
+            guard let target = Self.unusedURL(named: name), let data = currentData() else { return }
+            if state.write(to: target) { savedData = data }
             return
         }
-        // Files from the picker or another app are only reachable while access is held, and
-        // saving writes back to them, so keep it until the editor closes.
-        if url.startAccessingSecurityScopedResource() { accessing = url }
-        state.open(url)
-    }
-
-    private func save() {
-        if let url = state.composition.fileURL {
-            state.write(to: url)
-        } else if let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
-            state.write(to: Self.unusedURL(in: folder))
+        let target = url.deletingLastPathComponent().appendingPathComponent(name).appendingPathExtension("mcomp")
+        guard !FileManager.default.fileExists(atPath: target.path) else {
+            state.show(AppAlert(title: "“\(name)” already exists", message: "Choose a different name."))
+            return
         }
+        save()
+        // Coordinated, so the Files app and file providers (iCloud Drive…) see the move.
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var moveError: Error?
+        coordinator.coordinate(writingItemAt: url, options: .forMoving, writingItemAt: target, options: .forReplacing,
+                               error: &coordinationError) { from, to in
+            do {
+                coordinator.item(at: from, willMoveTo: to)
+                try FileManager.default.moveItem(at: from, to: to)
+                coordinator.item(at: from, didMoveTo: to)
+            } catch {
+                moveError = error
+            }
+        }
+        if let error = moveError ?? coordinationError {
+            state.show(AppAlert(error))
+            return
+        }
+        composition.fileURL = target
     }
 
-    /// "Untitled.mcomp", or "Untitled 2.mcomp" and so on when that exists.
-    private static func unusedURL(in folder: URL) -> URL {
+    /// Copies the composition next to its file (or into Documents) as "… copy" and edits the copy.
+    func duplicate() {
+        save()
+        let folder = composition.fileURL?.deletingLastPathComponent() ?? Self.documents
+        guard let folder, let data = currentData(),
+              let target = Self.unusedURL(named: "\(title) copy", in: folder) else { return }
+        if state.write(to: target) { savedData = data }
+    }
+
+    /// Continues with a file the composition was just saved to elsewhere (Save As…).
+    func adopt(_ url: URL) {
+        accessing?.stopAccessingSecurityScopedResource()
+        accessing = nil
+        access(url)
+        composition.fileURL = url
+        savedData = currentData()
+    }
+
+    private func access(_ url: URL) {
+        if url.startAccessingSecurityScopedResource() { accessing = url }
+    }
+
+    private static var documents: URL? { FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first }
+
+    /// "`name`.mcomp" in `folder`, or "`name` 2.mcomp" and so on when that exists.
+    private static func unusedURL(named name: String, in folder: URL? = documents) -> URL? {
+        guard let folder else { return nil }
         var n = 1
         while true {
-            let name = n == 1 ? "Untitled.mcomp" : "Untitled \(n).mcomp"
-            let url = folder.appendingPathComponent(name)
+            let url = folder.appendingPathComponent(n == 1 ? name : "\(name) \(n)").appendingPathExtension("mcomp")
             if !FileManager.default.fileExists(atPath: url.path) { return url }
             n += 1
         }
+    }
+}
+
+/// The composition's bytes, for the Save As… file exporter.
+private struct CompositionFile: FileDocument {
+    static let readableContentTypes: [UTType] = [.metalComposition]
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        data = configuration.file.regularFileContents ?? Data()
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
     }
 }
 

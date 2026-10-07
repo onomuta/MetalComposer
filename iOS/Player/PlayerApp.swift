@@ -212,6 +212,8 @@ struct HomeView: View {
         .fullScreenCover(item: $library.editing) { editing in
             EditorScreen(url: editing.url) { saved in
                 library.editing = nil
+                // Renamed or saved elsewhere: the old entry would point at nothing.
+                if let old = editing.url, old != saved { library.forget(old) }
                 saved.map(library.remember)
             }
         }

@@ -74,13 +74,17 @@ final class AppState: ObservableObject {
         playback.restart()
     }
 
-    /// Writes the composition to `url` and makes it the document's file.
-    func write(to url: URL) {
+    /// Writes the composition to `url` and makes it the document's file. False (after telling the
+    /// user) when it couldn't be written.
+    @discardableResult
+    func write(to url: URL) -> Bool {
         do {
             try composition.encoded().write(to: url, options: .atomic)
             composition.fileURL = url
+            return true
         } catch {
             show(AppAlert(error))
+            return false
         }
     }
 
@@ -181,7 +185,9 @@ struct ContentView: View {
                 if isCompact { showFloatingLibrary = true }
             }
         }
+        #if os(macOS)
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        #endif
         .alert(item: $state.alert) { alert in
             Alert(title: Text(alert.title), message: Text(alert.message))
         }
