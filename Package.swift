@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "MetalComposer",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v14), .iOS(.v17)],
     products: [
         // The engine, for apps that play .mcomp compositions (e.g. a VJ app). No editor UI.
         .library(name: "MetalComposerKit", targets: ["MetalComposerKit"]),

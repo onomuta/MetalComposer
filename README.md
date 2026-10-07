@@ -163,8 +163,26 @@ player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer,
 - **Text Image の文字間隔**：**Spacing** で、Proportional（フォントどおり）、Monospaced Digits（数字だけ同じ幅。カウンターや時計の数字が変わっても揺れません）、Monospaced（すべての文字を同じ幅のマスに置きます。Random String の文字が変わっても画像の幅が変わりません）を選べます。どのフォントでも使えます。Monospaced のマスは一番幅の広い文字（W など）に合わせるので、等幅フォントより字間が広く見えます。詰めたいときは等幅フォント（Font の System Monospaced など）を選んでください。
 - **画像の埋め込み**：Image Importer の **Embed in Composition** をオンにすると、画像ファイルの中身を作品に保存します。元のファイルがなくても、作品 1 つで持ち運べます。読み込みはファイルより 2〜3 倍遅く、作品も画像より 3 割ほど大きくなるので、ロゴやテクスチャなど数 MB までの画像に向いています（10MB を超えるとインスペクタに注意が出ます）。埋め込み後に元のファイルを変えても作品には反映されないので、反映するにはファイルを選び直します。0.4.1 以前の版で開くと、埋め込んだ画像は使われず、ファイルから読みます。
 - **問題の確認**：画像が見つからない、シェーダのエラーなどは `problems` で取得できます。新しい Metal Composer で追加されたパッチなど、このエンジンが知らないパッチは読み飛ばし（つながりも外れます）、その種類を `problems` に含めます。エディタで開いたときは警告を出します。
-- **Mouse パッチ**：組み込み先では、位置が常に中央になります。
+- **Mouse パッチ**：`player.pointer`（作品の座標。x は −1〜1、y は上向きで x と同じ縮尺）と `player.isPointerDown` で渡します。渡さなければ、位置は常に中央です。
+- **デモ**：`CompositionPlayer.demoNames` と `CompositionPlayer(engine:demoNamed:)` で、エディタの File › Demos と同じ作品を再生できます。
+- **iOS**：エンジンは iOS 17 以降でも動きます。マイクを使う作品があるなら、Info.plist に `NSMicrophoneUsageDescription` が必要です。
 - **ファイル形式**：エンジンより新しい形式の作品を読もうとすると、読み込みの段階でエラーになります（`CompositionPlayer.supportedFormatVersion`）。
+
+## iOS 再生アプリ（MC Player）
+
+`iOS/` に、`.mcomp` を iPhone／iPad で再生するだけのアプリがあります（編集はできません）。Xcode プロジェクトは [XcodeGen](https://github.com/yonaskolb/XcodeGen) で作ります。
+
+```bash
+brew install xcodegen
+cd iOS && xcodegen             # MetalComposerPlayer.xcodeproj を作成（リポジトリには含めていません）
+open MetalComposerPlayer.xcodeproj
+```
+
+- 組み込みのデモ、ファイルアプリから選んだ作品、「共有」や AirDrop で受け取った作品を再生できます。開いた作品は「Recent」に残ります。
+- 画面をタップすると操作ボタン（閉じる、再生／一時停止、最初から、パラメータ、問題）が出て、3 秒で消えます。指の位置は Mouse パッチに入ります。
+- パラメータ（作品のトップの Macro Input）は、数値・真偽値・色・文字列を変えられます。Macro Input には範囲の情報がないので、スライダーの範囲は既定値から推測しています（0〜1 か、既定値の ±2 倍）。
+- **画像ファイルについて**：iOS では、ファイルアプリで選んだ作品ファイル自体しか読む許可が出ないため、同じフォルダの画像を相対パスで読めないことがあります。iOS で再生する作品は、Image Importer の **Embed in Composition** をオンにしておくのが確実です。
+- **フォント**：iOS に入っていないフォントはシステムフォントで描きます。
 
 ## パッチの追加方法
 

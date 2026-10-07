@@ -1,4 +1,4 @@
-import AppKit
+import CoreText
 import CoreImage
 import Metal
 import MetalKit
@@ -89,7 +89,7 @@ package final class TextImagePatch: Patch {
     package static let systemMonospaced = "System Monospaced"
 
     /// The system fonts' weights, lightest first.
-    package static let systemWeights: [(name: String, weight: NSFont.Weight)] = [
+    package static let systemWeights: [(name: String, weight: PlatformFont.Weight)] = [
         ("Ultralight", .ultraLight), ("Thin", .thin), ("Light", .light), ("Regular", .regular), ("Medium", .medium),
         ("Semibold", .semibold), ("Bold", .bold), ("Heavy", .heavy), ("Black", .black),
     ]
@@ -119,15 +119,27 @@ package final class TextImagePatch: Patch {
         if family.isEmpty || family == systemMonospaced {
             return systemWeights.map { FontStyle(postScriptName: "", name: $0.name, weight: $0.weight.rawValue, width: 0, italic: false) }
         }
+        #if canImport(AppKit)
         let members = NSFontManager.shared.availableMembers(ofFontFamily: family) ?? []
-        return members.compactMap { m -> FontStyle? in
+        let found = members.compactMap { m -> FontStyle? in
             guard m.count >= 4, let ps = m[0] as? String, let name = m[1] as? String, let traits = m[3] as? UInt,
-                  let font = NSFont(name: ps, size: 12) else { return nil }
+                  let font = PlatformFont(name: ps, size: 12) else { return nil }
             let t = font.fontDescriptor.object(forKey: .traits) as? [NSFontDescriptor.TraitKey: Any]
             return FontStyle(postScriptName: ps, name: name, weight: t?[.weight] as? CGFloat ?? 0,
                              width: t?[.width] as? CGFloat ?? 0, italic: traits & NSFontTraitMask.italicFontMask.rawValue != 0)
         }
-        .sorted { ($0.weight, abs($0.width), $0.italic ? 1 : 0) < ($1.weight, abs($1.width), $1.italic ? 1 : 0) }
+        #else
+        let found = UIFont.fontNames(forFamilyName: family).map { ps -> FontStyle in
+            let font = CTFontCreateWithName(ps as CFString, 12, nil)
+            let name = CTFontCopyName(font, kCTFontStyleNameKey) as String? ?? ps
+            let t = CTFontCopyTraits(font) as? [CFString: Any]
+            let symbolic = (t?[kCTFontSymbolicTrait] as? UInt32) ?? 0
+            return FontStyle(postScriptName: ps, name: name, weight: t?[kCTFontWeightTrait] as? CGFloat ?? 0,
+                             width: t?[kCTFontWidthTrait] as? CGFloat ?? 0,
+                             italic: symbolic & CTFontSymbolicTraits.traitItalic.rawValue != 0)
+        }
+        #endif
+        return found.sorted { ($0.weight, abs($0.width), $0.italic ? 1 : 0) < ($1.weight, abs($1.width), $1.italic ? 1 : 0) }
     }
 
     /// A guess at how heavy a style name is, for picking the closest style in a family that
@@ -154,12 +166,12 @@ package final class TextImagePatch: Patch {
     }
 
     /// The font for a family and Weight. Nil when the family isn't installed.
-    package static func font(family: String, style: String, size: Double) -> NSFont? {
+    package static func font(family: String, style: String, size: Double) -> PlatformFont? {
         guard let resolved = resolvedStyle(family: family, style: style) else { return nil }
-        let weight = NSFont.Weight(resolved.weight)
+        let weight = PlatformFont.Weight(resolved.weight)
         if family.isEmpty { return .systemFont(ofSize: size, weight: weight) }
         if family == systemMonospaced { return .monospacedSystemFont(ofSize: size, weight: weight) }
-        return NSFont(name: resolved.postScriptName, size: size)
+        return PlatformFont(name: resolved.postScriptName, size: size)
     }
 
     /// Before 0.9, Font held a style's PostScript name and Weight was a menu (Regular, Medium,
@@ -169,7 +181,7 @@ package final class TextImagePatch: Patch {
         guard saved["fontStyle"] == nil else { return }
         let oldFont = saved["font"]?.string ?? ""
         if !oldFont.isEmpty {
-            if let font = NSFont(name: oldFont, size: 12), let family = font.familyName,
+            if let font = PlatformFont(name: oldFont, size: 12), let family = font.familyName as String?,
                let style = Self.styles(of: family).first(where: { $0.postScriptName == oldFont }) {
                 params["font"] = .string(family)
                 params["fontStyle"] = .string(style.name)
@@ -230,7 +242,7 @@ package final class TextImagePatch: Patch {
     }
 
     /// The font Text Image uses: the family's style, or the system font when the family is missing.
-    package static func resolvedFont(family: String, style: String, size: Double) -> NSFont {
+    package static func resolvedFont(family: String, style: String, size: Double) -> PlatformFont {
         font(family: family, style: style, size: size) ?? font(family: "", style: style, size: size)!
     }
 

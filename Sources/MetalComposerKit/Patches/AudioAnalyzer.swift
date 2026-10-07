@@ -56,16 +56,34 @@ package final class AudioAnalyzer {
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
                     self.starting = false
-                    if granted { self.startEngine() } else { self.setProblem("Microphone access was denied. Allow it in System Settings › Privacy & Security › Microphone.") }
+                    if granted { self.startEngine() } else { self.setProblem("Microphone access was denied. Allow it in \(Self.settingsPath).") }
                 }
             }
         default:
             starting = true // don't ask again every frame
-            setProblem("Microphone access is off. Allow it in System Settings › Privacy & Security › Microphone.")
+            setProblem("Microphone access is off. Allow it in \(Self.settingsPath).")
         }
     }
 
+    #if os(iOS)
+    private static let settingsPath = "Settings › Privacy & Security › Microphone"
+    #else
+    private static let settingsPath = "System Settings › Privacy & Security › Microphone"
+    #endif
+
     private func startEngine() {
+        #if os(iOS)
+        // Mix with other apps so music playing elsewhere keeps going while the mic listens.
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .defaultToSpeaker])
+            try session.setActive(true)
+        } catch {
+            setProblem("Couldn't start audio input: \(error.localizedDescription)")
+            starting = true
+            return
+        }
+        #endif
         let engine = AVAudioEngine()
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)

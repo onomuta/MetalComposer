@@ -1,0 +1,171 @@
+import Metal
+import MetalComposerKit
+import SwiftUI
+import UniformTypeIdentifiers
+
+extension UTType {
+    static let metalComposition = UTType("dev.metalcomposer.composition") ?? .json
+}
+
+/// GPU state shared by every composition the app plays.
+enum Engine {
+    static let shared: MetalComposerEngine? = MTLCreateSystemDefaultDevice().flatMap { try? MetalComposerEngine(device: $0) }
+}
+
+@main
+struct PlayerApp: App {
+    @StateObject private var library = Library()
+
+    var body: some Scene {
+        WindowGroup {
+            HomeView()
+                .environmentObject(library)
+                // Files, AirDrop and "Open in…" hand .mcomp files to the app here.
+                .onOpenURL { library.open($0) }
+                // Compiling the built-in shaders takes a moment; do it before the first demo is opened.
+                .task { await Task.detached(priority: .userInitiated) { _ = Engine.shared }.value }
+        }
+    }
+}
+
+/// What to play: a built-in demo or a file.
+enum Source: Hashable {
+    case demo(String)
+    case file(URL)
+
+    var title: String {
+        switch self {
+        case .demo(let name): return name
+        case .file(let url): return url.deletingPathExtension().lastPathComponent
+        }
+    }
+}
+
+/// Recently opened files (kept as bookmarks, so they reopen without the file picker) and the
+/// composition being played.
+final class Library: ObservableObject {
+    @Published var playing: PlayingComposition?
+    @Published var recents: [URL] = []
+    @Published var error: String?
+
+    private static let recentsKey = "recentBookmarks"
+    private static let maxRecents = 20
+
+    init() {
+        let bookmarks = (UserDefaults.standard.array(forKey: Self.recentsKey) as? [Data]) ?? []
+        recents = bookmarks.compactMap { data in
+            var stale = false
+            return try? URL(resolvingBookmarkData: data, bookmarkDataIsStale: &stale)
+        }
+    }
+
+    func play(_ source: Source) {
+        guard let engine = Engine.shared else {
+            error = "This device doesn't support Metal."
+            return
+        }
+        do {
+            switch source {
+            case .demo(let name):
+                guard let player = CompositionPlayer(engine: engine, demoNamed: name) else { return }
+                playing = PlayingComposition(player: player, title: source.title)
+            case .file(let url):
+                // Files from the picker or another app are only readable while access is held,
+                // and images next to the file are read while playing, so keep it until closed.
+                let scoped = url.startAccessingSecurityScopedResource()
+                do {
+                    let player = try CompositionPlayer(engine: engine, contentsOf: url)
+                    playing = PlayingComposition(player: player, title: source.title) {
+                        if scoped { url.stopAccessingSecurityScopedResource() }
+                    }
+                } catch {
+                    if scoped { url.stopAccessingSecurityScopedResource() }
+                    throw error
+                }
+                remember(url)
+            }
+        } catch {
+            self.error = "Couldn't open \(source.title): \(error.localizedDescription)"
+        }
+    }
+
+    func open(_ url: URL) {
+        playing = nil
+        play(.file(url))
+    }
+
+    func forget(_ url: URL) {
+        recents.removeAll { $0 == url }
+        save()
+    }
+
+    private func remember(_ url: URL) {
+        recents.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
+        recents.insert(url, at: 0)
+        recents = Array(recents.prefix(Self.maxRecents))
+        save()
+    }
+
+    private func save() {
+        let bookmarks = recents.compactMap { try? $0.bookmarkData() }
+        UserDefaults.standard.set(bookmarks, forKey: Self.recentsKey)
+    }
+}
+
+/// A composition on screen. `onClose` gives back resources held while it plays.
+final class PlayingComposition: Identifiable {
+    let id = UUID()
+    let player: CompositionPlayer
+    let title: String
+    private let onClose: () -> Void
+
+    init(player: CompositionPlayer, title: String, onClose: @escaping () -> Void = {}) {
+        self.player = player
+        self.title = title
+        self.onClose = onClose
+    }
+
+    deinit { onClose() }
+}
+
+struct HomeView: View {
+    @EnvironmentObject private var library: Library
+    @State private var picking = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Demos") {
+                    ForEach(CompositionPlayer.demoNames, id: \.self) { name in
+                        Button { library.play(.demo(name)) } label: {
+                            Label(name, systemImage: "play.rectangle")
+                        }
+                    }
+                }
+                if !library.recents.isEmpty {
+                    Section("Recent") {
+                        ForEach(library.recents, id: \.self) { url in
+                            Button { library.play(.file(url)) } label: {
+                                Label(Source.file(url).title, systemImage: "doc")
+                            }
+                        }
+                        .onDelete { $0.map { library.recents[$0] }.forEach(library.forget) }
+                    }
+                }
+            }
+            .navigationTitle("Metal Composer")
+            .toolbar {
+                Button { picking = true } label: { Label("Open", systemImage: "folder") }
+            }
+            .fileImporter(isPresented: $picking, allowedContentTypes: [.metalComposition]) { result in
+                if case .success(let url) = result { library.play(.file(url)) }
+            }
+            .alert("Couldn't Play", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
+                Button("OK") {}
+            } message: {
+                Text(library.error ?? "")
+            }
+        }
+        .fullScreenCover(item: $library.playing) { PlayerView(composition: $0) }
+    }
+}

@@ -25,6 +25,16 @@ final class PlayerTests: XCTestCase {
         XCTAssertEqual(try render(player, time: 1 / 60.0), [255, 0, 0, 255])
     }
 
+    func testBuiltInDemosLoadAndRender() throws {
+        XCTAssertEqual(CompositionPlayer.demoNames.count, 7)
+        for name in CompositionPlayer.demoNames where name != "Audio Reactive" {
+            let player = try XCTUnwrap(CompositionPlayer(engine: engine, demoNamed: name), name)
+            _ = try render(player)
+            XCTAssertTrue(player.problems.isEmpty, "\(name): \(player.problems)")
+        }
+        XCTAssertNil(CompositionPlayer(engine: engine, demoNamed: "No Such Demo"))
+    }
+
     func testRelativeImagePathResolvesAgainstTheCompositionFolder() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("mc-player-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: folder.appendingPathComponent("images"), withIntermediateDirectories: true)

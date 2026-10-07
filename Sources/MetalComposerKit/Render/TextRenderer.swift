@@ -1,4 +1,3 @@
-import AppKit
 import CoreText
 import Metal
 
@@ -20,7 +19,7 @@ package struct TextLayout {
     /// Lays out `text`, one line per "\n". Spacing 0 uses the font's own advances and kerning;
     /// 1 puts digits in equal cells (their widest digit); 2 puts every character in equal cells
     /// (as wide as the widest letter or digit, or any wider character in the text), centered.
-    package static func make(_ text: String, font: NSFont, spacing: Int) -> TextLayout {
+    package static func make(_ text: String, font: PlatformFont, spacing: Int) -> TextLayout {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let lineHeight = ceil(font.ascender - font.descender + font.leading)
         let descent = ceil(-font.descender)
@@ -70,7 +69,7 @@ package struct TextLayout {
         return TextLayout(size: size, glyphs: placed)
     }
 
-    fileprivate static func font(of run: CTRun, default font: NSFont) -> CTFont {
+    fileprivate static func font(of run: CTRun, default font: PlatformFont) -> CTFont {
         let attributes = CTRunGetAttributes(run) as NSDictionary
         guard let value = attributes[kCTFontAttributeName] else { return font }
         return value as! CTFont // swiftlint:disable:this force_cast
@@ -114,9 +113,9 @@ package final class CharacterMetrics {
     private var byFont: [String: [Character: Metrics]] = [:]
     private var cellsByFont: [String: (digit: CGFloat, alphanumeric: CGFloat)] = [:]
 
-    private static func key(_ font: NSFont) -> String { "\(font.fontName)|\(font.pointSize)" }
+    private static func key(_ font: PlatformFont) -> String { "\(font.fontName)|\(font.pointSize)" }
 
-    package func of(_ c: Character, _ font: NSFont) -> Metrics {
+    package func of(_ c: Character, _ font: PlatformFont) -> Metrics {
         let key = Self.key(font)
         if let m = byFont[key]?[c] { return m }
         // A one-character line, so font fallback (e.g. kana in a Latin font) and multi-glyph
@@ -138,7 +137,7 @@ package final class CharacterMetrics {
         return m
     }
 
-    package func cells(_ font: NSFont) -> (digit: CGFloat, alphanumeric: CGFloat) {
+    package func cells(_ font: PlatformFont) -> (digit: CGFloat, alphanumeric: CGFloat) {
         let key = Self.key(font)
         if let c = cellsByFont[key] { return c }
         let digit = "0123456789".map { of($0, font).advance }.max() ?? 0

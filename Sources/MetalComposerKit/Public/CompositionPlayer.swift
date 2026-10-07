@@ -105,6 +105,24 @@ public final class CompositionPlayer {
     private var lastTime: Double?
     private var depth: MTLTexture?
 
+    /// Where the pointer (mouse or touch) is, in composition units: x runs -1…1 across the
+    /// target, y is scaled by the same factor (so it spans ±height/width). Mouse patches read it.
+    public var pointer = SIMD2<Float>(0, 0)
+    /// Whether the pointer is pressed (a finger is down).
+    public var isPointerDown = false
+
+    /// Names of the demo compositions built into the engine (the editor's File › Demos).
+    public static var demoNames: [String] { Demo.allCases.map(\.rawValue) }
+
+    /// Loads a built-in demo by name (one of `demoNames`). Nil for an unknown name.
+    public convenience init?(engine: MetalComposerEngine, demoNamed name: String) {
+        guard let demo = Demo(rawValue: name) else { return nil }
+        let g = Graph()
+        demo.build(into: g)
+        guard let data = try? JSONEncoder().encode(g.record()) else { return nil }
+        try? self.init(engine: engine, data: data)
+    }
+
     /// Loads a composition file. Relative file paths inside it resolve against its folder.
     public convenience init(engine: MetalComposerEngine, contentsOf url: URL) throws {
         try self.init(engine: engine, data: Data(contentsOf: url), baseDirectory: url.deletingLastPathComponent())
@@ -180,7 +198,7 @@ public final class CompositionPlayer {
         for p in parameters { published[p.key] = values[p.key] ?? p.defaultValue.value }
         let ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: time,
                               deltaTime: lastTime.map { time - $0 } ?? 0, viewportSize: size,
-                              mouse: .zero, mouseDown: false, published: published)
+                              mouse: pointer, mouseDown: isPointerDown, published: published)
         lastTime = time
 
         let pass = MTLRenderPassDescriptor()

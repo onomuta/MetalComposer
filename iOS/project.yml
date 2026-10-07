@@ -1,0 +1,63 @@
+# Xcode project for the iOS player. Generate it with `xcodegen` (run in this folder);
+# the .xcodeproj itself isn't committed.
+name: MetalComposerPlayer
+options:
+  bundleIdPrefix: dev.metalcomposer
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  MetalComposer:
+    path: ..
+settings:
+  base:
+    DEVELOPMENT_TEAM: BWZ7Q5QLJ5
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
+targets:
+  MetalComposerPlayer:
+    type: application
+    platform: iOS
+    sources: [Player]
+    dependencies:
+      - package: MetalComposer
+        product: MetalComposerKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.metalcomposer.player
+        PRODUCT_NAME: Metal Composer Player
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Player/Info.plist
+    info:
+      path: Player/Info.plist
+      properties:
+        CFBundleDisplayName: MC Player
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad:
+          [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown,
+           UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        # Lets ProMotion iPhones draw at 120 fps.
+        CADisableMinimumFrameDurationOnPhone: true
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Audio patches in a composition react to sound from the microphone.
+        LSSupportsOpeningDocumentsInPlace: true
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.metalcomposer.composition
+            UTTypeDescription: Metal Composer Composition
+            UTTypeConformsTo: [public.json]
+            UTTypeTagSpecification:
+              public.filename-extension: [mcomp]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Metal Composer Composition
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Default
+            LSItemContentTypes: [dev.metalcomposer.composition]
