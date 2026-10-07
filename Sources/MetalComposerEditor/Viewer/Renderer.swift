@@ -31,6 +31,8 @@ final class Renderer: NSObject, MTKViewDelegate {
 
     var mouse = SIMD2<Float>(0, 0)
     var mouseDown = false
+    /// Values being tried for the composition's parameters (the Parameters panel).
+    let parameters = ParameterValues()
 
     init(resources: RenderResources, composition: Composition, playback: Playback) {
         self.resources = resources
@@ -52,7 +54,8 @@ final class Renderer: NSObject, MTKViewDelegate {
         let clock = playback.tick()
         let ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: clock.time,
                               deltaTime: clock.delta, viewportSize: view.drawableSize,
-                              mouse: mouse, mouseDown: mouseDown, inspect: composition.selection)
+                              mouse: mouse, mouseDown: mouseDown,
+                              published: parameters.published(for: composition), inspect: composition.selection)
         FrameRenderer.encodeFrame(graph: composition.root, context: ctx, pass: pass, targetSize: view.drawableSize)
         commandBuffer.present(drawable)
         commandBuffer.commit()

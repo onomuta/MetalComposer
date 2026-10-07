@@ -32,6 +32,7 @@ final class AppState: ObservableObject {
     @Published var alert: AppAlert?
     var keyMonitor: Any?
     private var documentFolder: AnyCancellable?
+    private var parametersReset: AnyCancellable?
 
     init() {
         guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is not supported on this device") }
@@ -51,6 +52,9 @@ final class AppState: ObservableObject {
         documentFolder = composition.$fileURL.sink { [renderer] url in
             renderer.resources.baseDirectory = url?.deletingLastPathComponent()
         }
+        // Values tried for one composition's parameters don't carry over to the next.
+        parametersReset = NotificationCenter.default.publisher(for: .compositionReplaced)
+            .sink { [renderer] _ in renderer.parameters.values = [:] }
     }
 
     /// ⌘↩ toggles: opens the patch library with the cursor in its search field, or closes it
@@ -330,6 +334,7 @@ struct ContentView: View {
                 Button { state.playback.isPlaying.toggle() } label: {
                     Image(systemName: state.playback.isPlaying ? "pause.fill" : "play.fill")
                 }
+                ParametersButton(composition: composition, parameters: state.renderer.parameters)
                 Button { withAnimation { phoneViewerMode = .expanded } } label: { Image(systemName: "pip.exit") }
                     .accessibilityLabel("Dock Viewer")
             }

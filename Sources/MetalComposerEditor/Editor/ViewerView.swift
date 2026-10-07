@@ -96,6 +96,7 @@ struct ViewerPanel: View {
                     .pickerStyle(.menu)
                     .fixedSize()
                     .help("Preview aspect ratio")
+                    ParametersButton(composition: renderer.composition, parameters: renderer.parameters)
                     if let onTogglePopOut {
                         Button(action: onTogglePopOut) {
                             Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
@@ -145,6 +146,7 @@ struct ViewerPanel: View {
             MetalViewer(renderer: renderer)
                 .frame(width: 64, height: 36)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
+            ParametersButton(composition: renderer.composition, parameters: renderer.parameters)
             phoneModeButtons
         }
         .buttonStyle(.borderless)
