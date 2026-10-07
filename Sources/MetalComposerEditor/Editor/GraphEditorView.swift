@@ -131,7 +131,8 @@ struct GraphEditorView: View {
                 drawPendingConnection(&g)
                 drawMarquee(&g)
             }
-            .background(Color(white: composition.path.isEmpty ? 0.11 : 0.085))
+            // Not under the top bar (iPad), so its title stays readable.
+            .background(Color(white: composition.path.isEmpty ? 0.11 : 0.085), ignoresSafeAreaEdges: [])
             .contentShape(Rectangle())
             .gesture(dragGesture)
             .simultaneousGesture(magnifyGesture)

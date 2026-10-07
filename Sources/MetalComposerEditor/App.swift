@@ -147,8 +147,93 @@ struct ContentView: View {
     @AppStorage("viewerHeight") private var viewerHeight = 380.0
     private static let inspectorMinHeight = 200.0
     private static let editorMinWidth = 320.0
+    /// Height of the viewer and inspector row under the editor in the compact layout.
+    @AppStorage("compactBottomHeight") private var compactBottomHeight = 420.0
+    /// The compact layout is in use (tracked for the toolbar's library button).
+    @State private var isCompact = false
+    /// The library floating over the editor in the compact layout (the columns' library is
+    /// `state.showLibrary`, so each layout keeps its own).
+    @State private var showFloatingLibrary = false
+
+    /// Portrait iPad, or a narrow window in Split View: the editor takes the full width with the
+    /// viewer and inspector under it, and the library floats over the editor. The Mac always
+    /// uses columns.
+    private static func isCompact(_ size: CGSize) -> Bool {
+        #if os(macOS)
+        return false
+        #else
+        return size.width < size.height || size.width < 900
+        #endif
+    }
 
     var body: some View {
+        GeometryReader { geo in
+            Group {
+                if Self.isCompact(geo.size) {
+                    compactLayout(geo.size)
+                } else {
+                    columnsLayout(geo.size)
+                }
+            }
+            .onChange(of: Self.isCompact(geo.size), initial: true) { _, compact in isCompact = compact }
+            // ⌘↩ (Find Patch) opens the floating library in the compact layout.
+            .onChange(of: state.librarySearchRequest) { _, _ in
+                if isCompact { showFloatingLibrary = true }
+            }
+        }
+        .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        .alert(item: $state.alert) { alert in
+            Alert(title: Text(alert.title), message: Text(alert.message))
+        }
+        .sheet(isPresented: $state.showExport) {
+            ExportMovieView(exporter: state.exporter) { state.exportMovie() }
+                .interactiveDismissDisabled(state.exporter.isExporting)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    if isCompact { showFloatingLibrary.toggle() } else { state.showLibrary.toggle() }
+                } label: { Image(systemName: "sidebar.left") }
+                    .help(state.showLibrary ? "Hide Patch Library (⌥⌘L)" : "Show Patch Library (⌥⌘L)")
+            }
+        }
+    }
+
+    /// Editor on top at full width; viewer and inspector side by side below it.
+    private func compactLayout(_ size: CGSize) -> some View {
+        // Keep at least a usable editor above and a usable row below.
+        let bottom = min(max(compactBottomHeight, 240), max(240, size.height - 300))
+        return VStack(spacing: 0) {
+            GraphEditorView(composition: composition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .overlay(alignment: .topLeading) {
+                    if showFloatingLibrary {
+                        LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
+                                    onAddedFromSearch: { showFloatingLibrary = false },
+                                    onAdd: { showFloatingLibrary = false })
+                            .frame(width: min(320, size.width - 40), height: min(560, size.height - bottom - 40))
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                            .shadow(radius: 12)
+                            .padding(10)
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: showFloatingLibrary)
+            RowResizeHandle(height: $compactBottomHeight, shown: bottom, range: 240...1000, growsUpward: true)
+            HStack(spacing: 0) {
+                ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer)
+                    .frame(width: size.width / 2)
+                Rectangle().fill(Color.separatorLine).frame(width: 1)
+                InspectorView(composition: composition)
+                    .frame(maxWidth: .infinity)
+            }
+            .frame(height: bottom)
+        }
+    }
+
+    /// Library, editor, then the viewer above the inspector (the Mac, and iPad in landscape).
+    private func columnsLayout(_ size: CGSize) -> some View {
         GeometryReader { geo in
             let libraryShown = state.showLibrary
             let usedByLibrary = libraryShown ? libraryWidth + ColumnResizeHandle.width : 0
@@ -182,20 +267,6 @@ struct ContentView: View {
                         .frame(minHeight: Self.inspectorMinHeight, maxHeight: .infinity)
                 }
                 .frame(width: rightWidth)
-            }
-        }
-        .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
-        .alert(item: $state.alert) { alert in
-            Alert(title: Text(alert.title), message: Text(alert.message))
-        }
-        .sheet(isPresented: $state.showExport) {
-            ExportMovieView(exporter: state.exporter) { state.exportMovie() }
-                .interactiveDismissDisabled(state.exporter.isExporting)
-        }
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button { state.showLibrary.toggle() } label: { Image(systemName: "sidebar.left") }
-                    .help(state.showLibrary ? "Hide Patch Library (⌥⌘L)" : "Show Patch Library (⌥⌘L)")
             }
         }
     }
@@ -250,12 +321,19 @@ struct ColumnResizeHandle: View {
 
 /// Like `ColumnResizeHandle`, between two views stacked vertically; resizes the one above.
 struct RowResizeHandle: View {
+    /// Thicker with touch, so a finger can grab it.
+    #if os(macOS)
     static let height: CGFloat = 7
+    #else
+    static let height: CGFloat = 16
+    #endif
 
     @Binding var height: Double
     /// The height actually shown, which is smaller than `height` when the window is short.
     var shown: Double
     var range: ClosedRange<Double>
+    /// True when the view being resized is below the handle (dragging up makes it taller).
+    var growsUpward = false
 
     @State private var dragStart: Double?
 
@@ -272,7 +350,8 @@ struct RowResizeHandle: View {
                 .onChanged { g in
                     let start = dragStart ?? shown
                     dragStart = start
-                    height = min(max(start + g.translation.height, range.lowerBound), range.upperBound)
+                    let delta = growsUpward ? -g.translation.height : g.translation.height
+                    height = min(max(start + delta, range.lowerBound), range.upperBound)
                 }
                 .onEnded { _ in dragStart = nil }
         )
