@@ -1,5 +1,7 @@
+#if os(macOS)
 import AppKit
 import Carbon
+#endif
 import SwiftUI
 import MetalComposerKit
 
@@ -15,8 +17,10 @@ struct LibraryView: View {
     @State private var search = ""
     @State private var highlighted = 0
     @FocusState private var searchFocused: Bool
+    #if os(macOS)
     /// The input source in use before the search field switched to alphanumeric input.
     @State private var inputSourceBeforeSearch: TISInputSource?
+    #endif
 
     /// Matching patches. Without a query: sections in registry order. With one: best matches first
     /// (title prefix, then title contains, then description), so Return picks the obvious patch.
@@ -45,7 +49,15 @@ struct LibraryView: View {
                 .onSubmit { addHighlighted(results) }
                 .onKeyPress(.downArrow) { moveHighlight(1, count: results.count) }
                 .onKeyPress(.upArrow) { moveHighlight(-1, count: results.count) }
+                #if os(macOS)
                 .onExitCommand { finishSearch() }
+                #else
+                .onKeyPress(.escape) { finishSearch(); return .handled }
+                // Patch names are English.
+                .keyboardType(.asciiCapable)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                #endif
             ScrollViewReader { proxy in
                 List {
                     if search.isEmpty {
@@ -73,14 +85,7 @@ struct LibraryView: View {
         }
         // Patch names are English: type them without the IME, then go back to the previous input.
         .onChange(of: searchFocused) { _, focused in
-            if focused {
-                inputSourceBeforeSearch = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
-                if let ascii = TISCopyCurrentASCIICapableKeyboardInputSource()?.takeRetainedValue() {
-                    TISSelectInputSource(ascii)
-                }
-            } else {
-                restoreInputSource()
-            }
+            if focused { switchToASCIIInput() } else { restoreInputSource() }
         }
         // Adding a patch from the search closes the library, possibly before focus moves.
         .onDisappear { restoreInputSource() }
@@ -88,10 +93,21 @@ struct LibraryView: View {
         .onChange(of: searchRequest) { _, _ in focusSearch() }
     }
 
+    private func switchToASCIIInput() {
+        #if os(macOS)
+        inputSourceBeforeSearch = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue()
+        if let ascii = TISCopyCurrentASCIICapableKeyboardInputSource()?.takeRetainedValue() {
+            TISSelectInputSource(ascii)
+        }
+        #endif
+    }
+
     private func restoreInputSource() {
+        #if os(macOS)
         guard let previous = inputSourceBeforeSearch else { return }
         TISSelectInputSource(previous)
         inputSourceBeforeSearch = nil
+        #endif
     }
 
     private func row(_ type: Patch.Type, isHighlighted: Bool) -> some View {
@@ -118,7 +134,9 @@ struct LibraryView: View {
         // After the panel has appeared and SwiftUI has settled focus for this event.
         DispatchQueue.main.async {
             searchFocused = true
+            #if os(macOS)
             (NSApp.keyWindow?.firstResponder as? NSText)?.selectAll(nil)
+            #endif
         }
     }
 
@@ -139,7 +157,9 @@ struct LibraryView: View {
     private func finishSearch() {
         search = ""
         searchFocused = false
+        #if os(macOS)
         NSApp.keyWindow?.makeFirstResponder(nil)
+        #endif
     }
 
     private func add(_ type: Patch.Type) {

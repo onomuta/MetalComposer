@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import MetalComposerKit
 
@@ -50,7 +49,7 @@ struct Knob: View {
             let r = min(canvasSize.width, canvasSize.height) / 2 - 1.5
 
             ctx.fill(Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)),
-                     with: .color(Color(nsColor: .controlBackgroundColor)))
+                     with: .color(Color.controlBackground))
             ctx.stroke(Path(ellipseIn: CGRect(x: center.x - r, y: center.y - r, width: r * 2, height: r * 2)),
                        with: .color(.secondary.opacity(0.5)), lineWidth: 1)
 
@@ -83,16 +82,13 @@ struct Knob: View {
                 .onChanged { g in
                     let start = dragStart ?? value
                     dragStart = start
-                    let mods = NSEvent.modifierFlags
-                    let scale = mods.contains(.option) ? 0.1 : (mods.contains(.shift) ? 10 : 1)
+                    let scale = HeldKeys.option ? 0.1 : (HeldKeys.shift ? 10 : 1)
                     value = clamped(start + (g.translation.width - g.translation.height) * sensitivity(from: start) * scale)
                 }
                 .onEnded { _ in dragStart = nil }
         )
         .simultaneousGesture(TapGesture(count: 2).onEnded { value = defaultValue })
-        .onHover { inside in
-            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-        }
+        .onHover(perform: ResizeCursor.upDown.set)
         .help("Drag to change (⌥ fine, ⇧ coarse) · double-click to reset")
         .accessibilityElement()
         .accessibilityLabel("Knob")

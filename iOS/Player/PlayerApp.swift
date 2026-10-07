@@ -1,4 +1,5 @@
 import Metal
+import MetalComposerEditor
 import MetalComposerKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -48,6 +49,8 @@ enum Source: Hashable {
 /// composition being played.
 final class Library: ObservableObject {
     @Published var playing: PlayingComposition?
+    /// The composition open in the editor (iPad).
+    @Published var editing: EditingComposition?
     @Published var recents: [URL] = []
     @Published var error: String?
 
@@ -97,12 +100,18 @@ final class Library: ObservableObject {
         play(.file(url))
     }
 
+    /// Opens the editor on a file, or on a new composition.
+    func edit(_ url: URL?) {
+        playing = nil
+        editing = EditingComposition(url: url)
+    }
+
     func forget(_ url: URL) {
         recents.removeAll { $0 == url }
         save()
     }
 
-    private func remember(_ url: URL) {
+    func remember(_ url: URL) {
         recents.removeAll { $0.standardizedFileURL == url.standardizedFileURL }
         recents.insert(url, at: 0)
         recents = Array(recents.prefix(Self.maxRecents))
@@ -113,6 +122,12 @@ final class Library: ObservableObject {
         let bookmarks = recents.compactMap { try? $0.bookmarkData() }
         UserDefaults.standard.set(bookmarks, forKey: Self.recentsKey)
     }
+}
+
+/// A composition open in the editor; nil `url` is a new one.
+struct EditingComposition: Identifiable {
+    let id = UUID()
+    let url: URL?
 }
 
 /// A composition on screen. `onClose` gives back resources held while it plays.
@@ -135,6 +150,8 @@ struct HomeView: View {
     @EnvironmentObject private var library: Library
     @ObservedObject private var external = ExternalDisplay.shared
     @State private var picking = false
+    /// The editor needs a large screen; iPhone only plays.
+    private let canEdit = UIDevice.current.userInterfaceIdiom == .pad
 
     var body: some View {
         NavigationStack {
@@ -158,6 +175,18 @@ struct HomeView: View {
                             Button { library.play(.file(url)) } label: {
                                 Label(Source.file(url).title, systemImage: "doc")
                             }
+                            .contextMenu {
+                                Button { library.play(.file(url)) } label: { Label("Play", systemImage: "play") }
+                                if canEdit {
+                                    Button { library.edit(url) } label: { Label("Edit", systemImage: "square.and.pencil") }
+                                }
+                            }
+                            .swipeActions(edge: .leading) {
+                                if canEdit {
+                                    Button { library.edit(url) } label: { Label("Edit", systemImage: "square.and.pencil") }
+                                        .tint(.orange)
+                                }
+                            }
                         }
                         .onDelete { $0.map { library.recents[$0] }.forEach(library.forget) }
                     }
@@ -165,6 +194,9 @@ struct HomeView: View {
             }
             .navigationTitle("Metal Composer")
             .toolbar {
+                if canEdit {
+                    Button { library.edit(nil) } label: { Label("New Composition", systemImage: "plus") }
+                }
                 Button { picking = true } label: { Label("Open", systemImage: "folder") }
             }
             .fileImporter(isPresented: $picking, allowedContentTypes: [.metalComposition]) { result in
@@ -177,5 +209,11 @@ struct HomeView: View {
             }
         }
         .fullScreenCover(item: $library.playing) { PlayerView(composition: $0) }
+        .fullScreenCover(item: $library.editing) { editing in
+            EditorScreen(url: editing.url) { saved in
+                library.editing = nil
+                saved.map(library.remember)
+            }
+        }
     }
 }

@@ -2,10 +2,10 @@ import MetalKit
 import SwiftUI
 import MetalComposerKit
 
-struct MetalViewer: NSViewRepresentable {
+struct MetalViewer {
     let renderer: Renderer
 
-    func makeNSView(context: Context) -> ComposerMTKView {
+    fileprivate func makeView() -> ComposerMTKView {
         let view = ComposerMTKView(frame: .zero, device: renderer.resources.device)
         view.colorPixelFormat = RenderResources.pixelFormat
         view.depthStencilPixelFormat = RenderResources.depthFormat
@@ -15,9 +15,19 @@ struct MetalViewer: NSViewRepresentable {
         view.delegate = renderer
         return view
     }
+}
 
+#if os(macOS)
+extension MetalViewer: NSViewRepresentable {
+    func makeNSView(context: Context) -> ComposerMTKView { makeView() }
     func updateNSView(_ view: ComposerMTKView, context: Context) {}
 }
+#else
+extension MetalViewer: UIViewRepresentable {
+    func makeUIView(context: Context) -> ComposerMTKView { makeView() }
+    func updateUIView(_ view: ComposerMTKView, context: Context) {}
+}
+#endif
 
 /// Preview shape. Free fills the available space; the others letterbox to a fixed ratio.
 enum ViewerAspect: String, CaseIterable, Identifiable {
@@ -51,7 +61,8 @@ struct ViewerPanel: View {
     @ObservedObject var playback: Playback
     /// True when shown in its own window.
     var isPoppedOut = false
-    var onTogglePopOut: () -> Void = {}
+    /// Moves the viewer to or from its own window; nil where there is only one window (iOS).
+    var onTogglePopOut: (() -> Void)?
     /// Shared by the docked and popped-out viewer, and remembered between launches.
     @AppStorage("viewerAspect") private var aspectName = ViewerAspect.free.rawValue
 
@@ -79,10 +90,12 @@ struct ViewerPanel: View {
                 .pickerStyle(.menu)
                 .fixedSize()
                 .help("Preview aspect ratio")
-                Button(action: onTogglePopOut) {
-                    Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
+                if let onTogglePopOut {
+                    Button(action: onTogglePopOut) {
+                        Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
+                    }
+                    .help(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)")
                 }
-                .help(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)")
             }
             .buttonStyle(.borderless)
             .padding(.horizontal, 10)

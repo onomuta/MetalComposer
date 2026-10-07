@@ -22,6 +22,8 @@ targets:
     dependencies:
       - package: MetalComposer
         product: MetalComposerKit
+      - package: MetalComposer
+        product: MetalComposerEditor
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.metalcomposer.player
@@ -50,6 +52,8 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSMicrophoneUsageDescription: Audio patches in a composition react to sound from the microphone.
         LSSupportsOpeningDocumentsInPlace: true
+        # Compositions saved by the editor appear in the Files app (On My iPad › MC Player).
+        UIFileSharingEnabled: true
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.metalcomposer.composition
             UTTypeDescription: Metal Composer Composition

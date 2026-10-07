@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import SwiftUI
 import UniformTypeIdentifiers
 import MetalComposerKit
@@ -35,6 +39,8 @@ struct InspectorView: View {
 private struct NodeInspector: View {
     @ObservedObject var node: Patch
     @ObservedObject var composition: Composition
+    /// The file setting being chosen with the file picker (iOS).
+    @State private var choosingFileFor: String?
 
     var body: some View {
         Form {
@@ -243,13 +249,29 @@ private struct NodeInspector: View {
                     Text(URL(fileURLWithPath: stringBinding(spec).wrappedValue).lastPathComponent)
                         .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
                     Button("Choose…") {
+                        #if os(macOS)
                         let panel = NSOpenPanel()
                         panel.allowedContentTypes = [.image]
                         if panel.runModal() == .OK, let url = panel.url {
                             stringBinding(spec).wrappedValue = composition.storedPath(for: url)
                         }
+                        #else
+                        choosingFileFor = spec.key
+                        #endif
                     }
                     .fixedSize()
+                    #if !os(macOS)
+                    .fileImporter(isPresented: Binding(get: { choosingFileFor == spec.key },
+                                                       set: { if !$0 { choosingFileFor = nil } }),
+                                  allowedContentTypes: [.image]) { result in
+                        guard case .success(let url) = result else { return }
+                        // A picked file is only readable for now, so keep its bytes in the composition.
+                        let scoped = url.startAccessingSecurityScopedResource()
+                        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                        composition.setParam(node, spec.key, .string(url.path))
+                        composition.setParam(node, "embed", .bool(true))
+                    }
+                    #endif
                 }
             }
         } else {
@@ -258,6 +280,7 @@ private struct NodeInspector: View {
     }
 }
 
+#if os(macOS)
 /// Plain-text code editor without smart quotes or autocorrection.
 struct CodeEditor: NSViewRepresentable {
     @Binding var text: String
@@ -299,13 +322,54 @@ struct CodeEditor: NSViewRepresentable {
         }
     }
 }
+#else
+/// Plain-text code editor without smart quotes or autocorrection.
+struct CodeEditor: UIViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UITextView {
+        let tv = UITextView()
+        tv.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        tv.autocorrectionType = .no
+        tv.autocapitalizationType = .none
+        tv.spellCheckingType = .no
+        tv.smartQuotesType = .no
+        tv.smartDashesType = .no
+        tv.smartInsertDeleteType = .no
+        tv.backgroundColor = UIColor(white: 0.09, alpha: 1)
+        tv.textColor = UIColor(white: 0.92, alpha: 1)
+        tv.tintColor = .white
+        tv.textContainerInset = UIEdgeInsets(top: 6, left: 6, bottom: 6, right: 6)
+        tv.text = text
+        tv.delegate = context.coordinator
+        return tv
+    }
+
+    func updateUIView(_ tv: UITextView, context: Context) {
+        context.coordinator.parent = self
+        if tv.text != text { tv.text = text }
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: CodeEditor
+        init(_ parent: CodeEditor) { self.parent = parent }
+        func textViewDidChange(_ tv: UITextView) { parent.text = tv.text }
+    }
+}
+#endif
 
 /// Picks a font family ("" = the system font). The style comes from Text Image's Weight.
 struct FontPicker: View {
     @Binding var name: String
 
     /// Installed families, read once; fonts installed while the app runs show up after a restart.
+    #if os(macOS)
     private static let families = NSFontManager.shared.availableFontFamilies.filter { !$0.hasPrefix(".") }
+    #else
+    private static let families = UIFont.familyNames.sorted()
+    #endif
 
     private var label: String {
         if name.isEmpty { return "System Font" }

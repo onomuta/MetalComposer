@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Combine
 import Metal
 import SwiftUI
@@ -26,11 +28,13 @@ final class AppState: ObservableObject {
     let exporter = MovieExporter()
     /// Incremented to ask the library to focus its search field.
     @Published var librarySearchRequest = 0
-    private var keyMonitor: Any?
+    /// A problem to show the user (iOS shows it as an alert; the Mac uses NSAlert directly).
+    @Published var alert: AppAlert?
+    var keyMonitor: Any?
     private var documentFolder: AnyCancellable?
 
     init() {
-        guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is not supported on this Mac") }
+        guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is not supported on this device") }
         do {
             let resources = try RenderResources(device: device)
             renderer = Renderer(resources: resources, composition: composition, playback: playback)
@@ -39,7 +43,9 @@ final class AppState: ObservableObject {
         }
         playback.onRestart = { [composition] in composition.root.nodes.forEach { $0.restart() } }
         composition.loadDemo(.basics)
+        #if os(macOS)
         installDeleteKey()
+        #endif
         exporter.onBusyChange = { [renderer] busy in renderer.isSuspended = busy }
         // Relative image paths resolve against the open document's folder.
         documentFolder = composition.$fileURL.sink { [renderer] url in
@@ -47,37 +53,14 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Delete / Forward Delete remove the selected patches unless text is being edited.
-    /// Handled here rather than as a menu shortcut so it never steals Backspace from text input
-    /// (including Japanese IME composition).
-    private func installDeleteKey() {
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self, event.keyCode == 51 || event.keyCode == 117,
-                  event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty,
-                  let window = NSApp.keyWindow, window === NSApp.mainWindow, window.attachedSheet == nil,
-                  !Composition.isEditingText, !self.composition.selection.isEmpty else { return event }
-            self.composition.deleteSelection()
-            return nil
-        }
-    }
-
-    /// Asks where to save, then renders the composition to a movie with the sheet's settings.
-    func exportMovie() {
-        let codec = exporter.settings.codec
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [codec.fileType == .mp4 ? .mpeg4Movie : .quickTimeMovie]
-        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer"
-        panel.nameFieldStringValue = "\(name).\(codec.fileExtension)"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
-    }
-
     /// ⌘↩ toggles: opens the patch library with the cursor in its search field, or closes it
     /// (handing the keyboard back to the graph) when it is already open.
     func findPatch() {
         if showLibrary {
             showLibrary = false
+            #if os(macOS)
             NSApp.keyWindow?.makeFirstResponder(nil)
+            #endif
         } else {
             showLibrary = true
             librarySearchRequest += 1
@@ -91,16 +74,42 @@ final class AppState: ObservableObject {
         playback.restart()
     }
 
+    /// Writes the composition to `url` and makes it the document's file.
+    func write(to url: URL) {
+        do {
+            try composition.encoded().write(to: url, options: .atomic)
+            composition.fileURL = url
+        } catch {
+            show(AppAlert(error))
+        }
+    }
+
+    #if !os(macOS)
+    /// Renders the composition to a movie in the temporary folder; the sheet then offers to share it.
+    func exportMovie() {
+        let codec = exporter.settings.codec
+        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).\(codec.fileExtension)")
+        try? FileManager.default.removeItem(at: url)
+        exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
+    }
+    #endif
+
+    func show(_ alert: AppAlert) {
+        #if os(macOS)
+        let panel = NSAlert()
+        panel.alertStyle = .warning
+        panel.messageText = alert.title
+        panel.informativeText = alert.message
+        panel.runModal()
+        #else
+        self.alert = alert
+        #endif
+    }
+
     func loadDemo(_ demo: Demo) {
         composition.loadDemo(demo)
         playback.restart()
-    }
-
-    func open() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.metalComposition, .json]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        open(url)
     }
 
     /// Opens a composition file (from the Open panel, Finder or the Dock).
@@ -109,149 +118,25 @@ final class AppState: ObservableObject {
             let unknown = try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
             if !unknown.isEmpty {
-                let alert = NSAlert()
-                alert.alertStyle = .warning
-                alert.messageText = "Some patches couldn't be loaded"
-                alert.informativeText = "This composition uses patches this version of Metal Composer doesn't know: "
-                    + unknown.joined(separator: ", ")
-                    + ". They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them."
-                alert.runModal()
+                show(AppAlert(title: "Some patches couldn't be loaded",
+                              message: "This composition uses patches this version of Metal Composer doesn't know: "
+                                + unknown.joined(separator: ", ")
+                                + ". They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them."))
             }
         } catch {
-            NSAlert(error: error).runModal()
+            show(AppAlert(error))
         }
     }
 
-    func save(as: Bool = false) {
-        var url = composition.fileURL
-        if url == nil || `as` {
-            let panel = NSSavePanel()
-            panel.allowedContentTypes = [.metalComposition]
-            panel.nameFieldStringValue = "Untitled.mcomp"
-            guard panel.runModal() == .OK, let chosen = panel.url else { return }
-            url = chosen
-        }
-        guard let url else { return }
-        do {
-            try composition.encoded().write(to: url, options: .atomic)
-            composition.fileURL = url
-        } catch {
-            NSAlert(error: error).runModal()
-        }
-    }
-}
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        AppAppearance.current.apply()
-        // Needed when launched as a bare SwiftPM executable (no .app bundle).
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
-
-    /// Files opened from Finder or dropped on the Dock icon. They can arrive before the window
-    /// (and the app state) exists, so they wait until `openHandler` is set.
-    var openHandler: ((URL) -> Void)? {
-        didSet {
-            guard let openHandler else { return }
-            pendingURLs.forEach(openHandler)
-            pendingURLs = []
-        }
-    }
-    private var pendingURLs: [URL] = []
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        // One document at a time: the last file wins.
-        guard let url = urls.last else { return }
-        if let openHandler { openHandler(url) } else { pendingURLs = [url] }
-    }
-}
-
-/// The editor app. Launched by the thin `MetalComposer` executable.
-public struct MetalComposerApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @StateObject private var state = AppState()
-
-    public init() {}
-
-    public var body: some Scene {
-        Window("Metal Composer", id: "main") {
-            ContentView(state: state, composition: state.composition)
-                .frame(minWidth: 1100, minHeight: 680)
-                .onAppear { [state] in delegate.openHandler = { state.open($0) } }
-        }
-        .defaultSize(width: 1500, height: 900)
-
-        Settings {
-            SettingsView()
-        }
-
-        Window("Viewer", id: "viewer") {
-            ViewerWindow(state: state)
-        }
-        .defaultSize(width: 960, height: 540)
-        .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New Composition") { state.newComposition() }.keyboardShortcut("n")
-                Button("Open…") { state.open() }.keyboardShortcut("o")
-                Divider()
-                Menu("Demos") {
-                    ForEach(Demo.allCases) { demo in
-                        Button(demo.rawValue) { state.loadDemo(demo) }
-                    }
-                }
-            }
-            CommandGroup(replacing: .undoRedo) {
-                UndoCommands(composition: state.composition)
-            }
-            CommandGroup(replacing: .pasteboard) {
-                let c = state.composition
-                Button("Cut") { c.perform(#selector(NSText.cut(_:))) { c.cutSelection() } }.keyboardShortcut("x")
-                Button("Copy") { c.perform(#selector(NSText.copy(_:))) { c.copySelection() } }.keyboardShortcut("c")
-                Button("Paste") { c.perform(#selector(NSText.paste(_:))) { c.paste() } }.keyboardShortcut("v")
-                Button("Duplicate") { c.duplicateSelection() }.keyboardShortcut("d")
-                Button("Delete") { c.perform(#selector(NSText.delete(_:))) { c.deleteSelection() } }
-                Button("Select All") { c.perform(#selector(NSText.selectAll(_:))) { c.selectAll() } }.keyboardShortcut("a")
-            }
-            CommandGroup(before: .toolbar) {
-                LibraryCommands(state: state)
-                Divider()
-            }
-            CommandGroup(replacing: .saveItem) {
-                Button("Save") { state.save() }.keyboardShortcut("s")
-                Button("Save As…") { state.save(as: true) }.keyboardShortcut("s", modifiers: [.command, .shift])
-                Divider()
-                Button("Export Movie…") { state.showExport = true }.keyboardShortcut("e", modifiers: [.command, .shift])
-            }
-            CommandMenu("Patch") {
-                Button("Group into Macro") { state.composition.groupSelectionIntoMacro() }.keyboardShortcut("g")
-                Button("Explode Macro") {
-                    if let node = state.composition.singleSelection { state.composition.explodeMacro(node) }
-                }
-                .keyboardShortcut("g", modifiers: [.command, .shift])
-                Button("Add Comment") { state.composition.addComment(at: state.composition.visibleCenter) }
-                    .keyboardShortcut("c", modifiers: [.command, .option])
-                Divider()
-                Button("Open Macro") {
-                    if let node = state.composition.singleSelection { state.composition.enter(node) }
-                }
-                .keyboardShortcut(.downArrow, modifiers: .command)
-                Button("Close Macro") {
-                    let c = state.composition
-                    if !c.path.isEmpty { c.exit(toDepth: c.path.count - 1) }
-                }
-                .keyboardShortcut(.upArrow, modifiers: .command)
-            }
-        }
-    }
 }
 
 struct ContentView: View {
     @ObservedObject var state: AppState
     @ObservedObject var composition: Composition
+    #if os(macOS)
     @Environment(\.openWindow) private var openWindow
+    #endif
 
     // Fixed column widths (remembered between launches); only the editor flexes, so showing or
     // hiding the library never changes the right column.
@@ -282,15 +167,14 @@ struct ContentView: View {
                 ColumnResizeHandle(width: $rightColumnWidth, range: 300...900, growsLeftward: true)
                 VStack(spacing: 0) {
                     if state.viewerPoppedOut {
+                        #if os(macOS)
                         PoppedOutViewerBar()
+                        #endif
                     } else {
                         // Shrink the viewer only when the window is too short to fit it.
                         let height = min(viewerHeight,
                                          max(240, geo.size.height - RowResizeHandle.height - Self.inspectorMinHeight))
-                        ViewerPanel(renderer: state.renderer, playback: state.playback) {
-                            state.viewerPoppedOut = true
-                            openWindow(id: "viewer")
-                        }
+                        ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer)
                         .frame(height: height)
                         RowResizeHandle(height: $viewerHeight, shown: height, range: 240...1200)
                     }
@@ -301,6 +185,9 @@ struct ContentView: View {
             }
         }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        .alert(item: $state.alert) { alert in
+            Alert(title: Text(alert.title), message: Text(alert.message))
+        }
         .sheet(isPresented: $state.showExport) {
             ExportMovieView(exporter: state.exporter) { state.exportMovie() }
                 .interactiveDismissDisabled(state.exporter.isExporting)
@@ -314,82 +201,22 @@ struct ContentView: View {
     }
 }
 
-/// The viewer in its own resizable window (use the green button or ⌃⌘F for full screen).
-private struct ViewerWindow: View {
-    @ObservedObject var state: AppState
-    @Environment(\.dismissWindow) private var dismissWindow
-
-    var body: some View {
-        ViewerPanel(renderer: state.renderer, playback: state.playback, isPoppedOut: true) {
-            dismissWindow(id: "viewer")
-        }
-        .id(state.viewerGeneration)
-        .frame(minWidth: 320, minHeight: 200)
-        .onAppear {
+extension ContentView {
+    /// Moves the viewer into its own window (the Mac only).
+    private var popOutViewer: (() -> Void)? {
+        #if os(macOS)
+        return {
             state.viewerPoppedOut = true
-            state.viewerGeneration += 1
+            openWindow(id: "viewer")
         }
-        .onDisappear {
-            state.viewerPoppedOut = false
-            state.viewerGeneration += 1
-        }
-    }
-}
-
-/// Stands in for the viewer in the main window while it is popped out.
-private struct PoppedOutViewerBar: View {
-    @Environment(\.dismissWindow) private var dismissWindow
-
-    var body: some View {
-        HStack {
-            Image(systemName: "macwindow").foregroundStyle(.secondary)
-            Text("The viewer is in its own window.").foregroundStyle(.secondary)
-            Spacer()
-            Button("Bring Back") { dismissWindow(id: "viewer") }
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(maxHeight: 40)
-    }
-}
-
-private struct LibraryCommands: View {
-    @ObservedObject var state: AppState
-    @Environment(\.openWindow) private var openWindow
-    @Environment(\.dismissWindow) private var dismissWindow
-
-    var body: some View {
-        Button(state.viewerPoppedOut ? "Bring Back Viewer" : "Pop Out Viewer") {
-            if state.viewerPoppedOut {
-                dismissWindow(id: "viewer")
-            } else {
-                state.viewerPoppedOut = true
-                openWindow(id: "viewer")
-            }
-        }
-        .keyboardShortcut("v", modifiers: [.command, .option])
-        Button(state.showLibrary ? "Hide Patch Library" : "Show Patch Library") { state.showLibrary.toggle() }
-            .keyboardShortcut("l", modifiers: [.command, .option])
-        Button(state.showLibrary ? "Close Patch Library" : "Find Patch…") { state.findPatch() }
-            .keyboardShortcut(.return, modifiers: .command)
-    }
-}
-
-private struct UndoCommands: View {
-    @ObservedObject var composition: Composition
-
-    var body: some View {
-        let um = composition.undoManager
-        Button(um.canUndo ? "Undo \(um.undoActionName)" : "Undo") { composition.undo() }
-            .keyboardShortcut("z")
-        Button(um.canRedo ? "Redo \(um.redoActionName)" : "Redo") { composition.redo() }
-            .keyboardShortcut("z", modifiers: [.command, .shift])
+        #else
+        return nil
+        #endif
     }
 }
 
 /// A column divider that resizes the column on one side by dragging.
-private struct ColumnResizeHandle: View {
+struct ColumnResizeHandle: View {
     static let width: CGFloat = 7
 
     @Binding var width: Double
@@ -402,13 +229,11 @@ private struct ColumnResizeHandle: View {
     var body: some View {
         ZStack {
             Color.clear
-            Rectangle().fill(Color(nsColor: .separatorColor)).frame(width: 1)
+            Rectangle().fill(Color.separatorLine).frame(width: 1)
         }
         .frame(width: Self.width)
         .contentShape(Rectangle())
-        .onHover { inside in
-            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-        }
+        .onHover(perform: ResizeCursor.leftRight.set)
         .gesture(
             // Global coordinates: the handle itself moves while dragging.
             DragGesture(minimumDistance: 1, coordinateSpace: .global)
@@ -424,7 +249,7 @@ private struct ColumnResizeHandle: View {
 }
 
 /// Like `ColumnResizeHandle`, between two views stacked vertically; resizes the one above.
-private struct RowResizeHandle: View {
+struct RowResizeHandle: View {
     static let height: CGFloat = 7
 
     @Binding var height: Double
@@ -437,13 +262,11 @@ private struct RowResizeHandle: View {
     var body: some View {
         ZStack {
             Color.clear
-            Rectangle().fill(Color(nsColor: .separatorColor)).frame(height: 1)
+            Rectangle().fill(Color.separatorLine).frame(height: 1)
         }
         .frame(height: Self.height)
         .contentShape(Rectangle())
-        .onHover { inside in
-            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-        }
+        .onHover(perform: ResizeCursor.upDown.set)
         .gesture(
             DragGesture(minimumDistance: 1, coordinateSpace: .global)
                 .onChanged { g in
@@ -456,47 +279,19 @@ private struct RowResizeHandle: View {
     }
 }
 
-/// The app's light or dark look, chosen in Settings (or following the system).
-enum AppAppearance: String, CaseIterable, Identifiable {
-    case system, light, dark
+/// A message for the user: an error, or a warning about the opened file.
+struct AppAlert: Identifiable {
+    let id = UUID()
+    var title: String
+    var message: String
 
-    static let defaultsKey = "appearance"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .system: "Use System Setting"
-        case .light: "Light"
-        case .dark: "Dark"
-        }
+    init(title: String, message: String) {
+        self.title = title
+        self.message = message
     }
 
-    static var current: AppAppearance {
-        UserDefaults.standard.string(forKey: defaultsKey).flatMap(AppAppearance.init) ?? .system
-    }
-
-    func apply() {
-        switch self {
-        case .system: NSApp.appearance = nil
-        case .light: NSApp.appearance = NSAppearance(named: .aqua)
-        case .dark: NSApp.appearance = NSAppearance(named: .darkAqua)
-        }
-    }
-}
-
-struct SettingsView: View {
-    @AppStorage(AppAppearance.defaultsKey) private var appearance = AppAppearance.system
-
-    var body: some View {
-        Form {
-            Picker("Appearance", selection: $appearance) {
-                ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.radioGroup)
-        }
-        .padding(20)
-        .frame(width: 360)
-        .onChange(of: appearance) { _, new in new.apply() }
+    /// Like NSAlert(error:): the description as the title, the recovery suggestion below.
+    init(_ error: Error) {
+        self.init(title: error.localizedDescription, message: (error as NSError).localizedRecoverySuggestion ?? "")
     }
 }

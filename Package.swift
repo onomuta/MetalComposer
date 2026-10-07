@@ -7,6 +7,8 @@ let package = Package(
     products: [
         // The engine, for apps that play .mcomp compositions (e.g. a VJ app). No editor UI.
         .library(name: "MetalComposerKit", targets: ["MetalComposerKit"]),
+        // The editor UI, shared by the Mac app and the iPad app.
+        .library(name: "MetalComposerEditor", targets: ["MetalComposerEditor"]),
         .executable(name: "MetalComposer", targets: ["MetalComposer"]),
     ],
     targets: [

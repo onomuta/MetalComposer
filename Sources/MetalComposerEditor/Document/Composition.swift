@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import CoreGraphics
 import MetalComposerKit
 
@@ -19,7 +23,7 @@ final class Composition: ObservableObject {
     /// Visible center of the editor in graph coordinates, used to place new patches.
     var visibleCenter = CGPoint(x: 300, y: 200)
 
-    static let pasteboardType = NSPasteboard.PasteboardType("dev.metalcomposer.patches")
+    static let pasteboardType = "dev.metalcomposer.patches"
 
     func touch() { objectWillChange.send() }
 
@@ -87,7 +91,7 @@ final class Composition: ObservableObject {
 
     /// ⌘Z: undoes typing while a text field is being edited, otherwise the last graph edit.
     func undo() {
-        if let text = NSApp.keyWindow?.firstResponder as? NSTextView, let um = text.undoManager, um.canUndo {
+        if let um = Self.textUndoManager, um.canUndo {
             um.undo()
         } else if undoManager.canUndo {
             undoManager.undo()
@@ -96,7 +100,7 @@ final class Composition: ObservableObject {
     }
 
     func redo() {
-        if let text = NSApp.keyWindow?.firstResponder as? NSTextView, let um = text.undoManager, um.canRedo {
+        if let um = Self.textUndoManager, um.canRedo {
             um.redo()
         } else if undoManager.canRedo {
             undoManager.redo()
@@ -234,8 +238,14 @@ final class Composition: ObservableObject {
 
     // MARK: Clipboard
 
+    #if os(macOS)
     /// True while a text field or text view has the keyboard; edit commands then belong to the text.
     static var isEditingText: Bool { NSApp.keyWindow?.firstResponder is NSText }
+
+    /// The focused text view's undo stack, while one is being edited.
+    private static var textUndoManager: UndoManager? {
+        (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
+    }
 
     /// Runs an Edit-menu command on the graph, or forwards it to the focused text.
     func perform(_ textAction: Selector, graph graphAction: () -> Void) {
@@ -246,11 +256,41 @@ final class Composition: ObservableObject {
         }
     }
 
+    private static var pasteboardData: Data? {
+        get { NSPasteboard.general.data(forType: NSPasteboard.PasteboardType(pasteboardType)) }
+        set {
+            NSPasteboard.general.clearContents()
+            if let newValue { NSPasteboard.general.setData(newValue, forType: NSPasteboard.PasteboardType(pasteboardType)) }
+        }
+    }
+    #else
+    /// True while a text field or text view has the keyboard; edit commands then belong to the text.
+    static var isEditingText: Bool { FirstResponder.current is UIKeyInput }
+
+    /// The focused text's undo stack, while one is being edited.
+    private static var textUndoManager: UndoManager? {
+        let responder = FirstResponder.current
+        return responder is UIKeyInput ? responder?.undoManager : nil
+    }
+
+    /// Runs an edit command on the graph, or forwards it to the focused text.
+    func perform(_ textAction: Selector, graph graphAction: () -> Void) {
+        if Self.isEditingText {
+            UIApplication.shared.sendAction(textAction, to: nil, from: nil, for: nil)
+        } else {
+            graphAction()
+        }
+    }
+
+    private static var pasteboardData: Data? {
+        get { UIPasteboard.general.data(forPasteboardType: pasteboardType) }
+        set { UIPasteboard.general.items = newValue.map { [[pasteboardType: $0]] } ?? [] }
+    }
+    #endif
+
     func copySelection() {
         guard !selection.isEmpty, let data = try? JSONEncoder().encode(graph.record(only: selection)) else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setData(data, forType: Self.pasteboardType)
+        Self.pasteboardData = data
     }
 
     func cutSelection() {
@@ -259,7 +299,7 @@ final class Composition: ObservableObject {
     }
 
     func paste() {
-        guard let data = NSPasteboard.general.data(forType: Self.pasteboardType),
+        guard let data = Self.pasteboardData,
               let record = try? JSONDecoder().decode(GraphRecord.self, from: data) else { return }
         insert(record, offset: CGSize(width: 30, height: 30), actionName: "Paste")
     }
@@ -458,3 +498,22 @@ final class Composition: ObservableObject {
         replaceDocument(with: g.record(), url: nil)
     }
 }
+
+#if !os(macOS)
+/// UIKit has no API for the first responder; an action sent to nil reaches it, so ask it to report itself.
+private enum FirstResponder {
+    private(set) static weak var found: UIResponder?
+
+    static var current: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.metalComposerReportFirstResponder), to: nil, from: nil, for: nil)
+        return found
+    }
+
+    static func report(_ responder: UIResponder) { found = responder }
+}
+
+extension UIResponder {
+    @objc fileprivate func metalComposerReportFirstResponder() { FirstResponder.report(self) }
+}
+#endif

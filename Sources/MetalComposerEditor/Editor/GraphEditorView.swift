@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import SwiftUI
 import UniformTypeIdentifiers
 import MetalComposerKit
@@ -93,6 +95,14 @@ struct GraphEditorView: View {
 
     private var graph: Graph { composition.graph }
 
+    /// With touch, dragging the background moves around the graph (as in Maps); a range selection
+    /// needs ⇧ or ⌘ on a keyboard. The Mac selects a range and pans with ⌥ or two-finger scroll.
+    #if os(macOS)
+    private static let backgroundDragPans = false
+    #else
+    private static let backgroundDragPans = true
+    #endif
+
     var body: some View {
         GeometryReader { geo in
             Canvas { ctx, size in
@@ -159,7 +169,7 @@ struct GraphEditorView: View {
             .overlay(alignment: .topLeading) { breadcrumb }
             .overlay(alignment: .bottomTrailing) { zoomControls }
             .onAppear { viewSize = geo.size; zoomToFit(); installScrollMonitor() }
-            .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m) } }
+            .onDisappear { removeScrollMonitor() }
             .onChange(of: geo.size) { _, s in viewSize = s; updateVisibleCenter() }
             .onChange(of: composition.path) { _, _ in zoomToFit() }
             .onReceive(NotificationCenter.default.publisher(for: .compositionReplaced)) { _ in zoomToFit() }
@@ -265,6 +275,10 @@ struct GraphEditorView: View {
                 case .move(_, _, let moved, let clicked):
                     if !moved { handleClick(on: clicked) }
                 case .pan:
+                    // A tap on the background (iOS pans instead of selecting) clears the selection.
+                    if Self.backgroundDragPans, hypot(value.translation.width, value.translation.height) < 3 {
+                        composition.selection = []
+                    }
                     updateVisibleCenter()
                 default:
                     break
@@ -279,8 +293,7 @@ struct GraphEditorView: View {
         editingComment = nil
         hoveredPort = nil
         let p = toGraph(screenPoint)
-        let mods = NSEvent.modifierFlags
-        let extend = mods.contains(.shift) || mods.contains(.command)
+        let extend = HeldKeys.shift || HeldKeys.command
 
         if let comment = graph.nodes.reversed().compactMap({ $0 as? CommentPatch })
             .first(where: { NodeLayout.resizeHandle($0).contains(p) }) {
@@ -309,7 +322,7 @@ struct GraphEditorView: View {
             }
             let origins = Dictionary(uniqueKeysWithValues: composition.selectedNodes.map { ($0.id, $0.position) })
             drag = .move(start: p, origins: origins, moved: false, clicked: node.id)
-        } else if mods.contains(.option) {
+        } else if HeldKeys.option || (Self.backgroundDragPans && !extend) {
             drag = .pan(start: offset)
         } else {
             let base = extend ? composition.selection : []
@@ -335,8 +348,7 @@ struct GraphEditorView: View {
             }
         }
         lastClick = (id, now)
-        let mods = NSEvent.modifierFlags
-        if !mods.contains(.shift), !mods.contains(.command) {
+        if !HeldKeys.shift, !HeldKeys.command {
             composition.selection = [id]
         }
     }
@@ -352,6 +364,7 @@ struct GraphEditorView: View {
 
     /// Two-finger scroll pans; ⌘-scroll zooms.
     private func installScrollMonitor() {
+        #if os(macOS)
         guard scrollMonitor == nil else { return }
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
             guard hovering else { return event }
@@ -365,6 +378,14 @@ struct GraphEditorView: View {
             }
             return nil
         }
+        #endif
+    }
+
+    private func removeScrollMonitor() {
+        #if os(macOS)
+        if let m = scrollMonitor { NSEvent.removeMonitor(m) }
+        scrollMonitor = nil
+        #endif
     }
 
     // MARK: Menus & overlays
@@ -688,6 +709,7 @@ private struct PortValueBubble: View {
     }
 }
 
+#if os(macOS)
 /// Inline text editor for comments. Escape ends editing; a plain SwiftUI TextEditor
 /// can't do this because NSTextView consumes Escape before SwiftUI sees it.
 private struct NoteEditor: NSViewRepresentable {
@@ -741,3 +763,50 @@ private struct NoteEditor: NSViewRepresentable {
         }
     }
 }
+#else
+/// Inline text editor for comments. Escape (on a hardware keyboard) ends editing.
+private struct NoteEditor: UIViewRepresentable {
+    @Binding var text: String
+    var onFinish: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class TextView: UITextView {
+        var onEscape: (() -> Void)?
+
+        override var keyCommands: [UIKeyCommand]? {
+            [UIKeyCommand(input: UIKeyCommand.inputEscape, modifierFlags: [], action: #selector(escape))]
+        }
+
+        @objc private func escape() { onEscape?() }
+    }
+
+    func makeUIView(context: Context) -> TextView {
+        let tv = TextView()
+        tv.onEscape = onFinish
+        tv.font = .systemFont(ofSize: 12)
+        tv.textColor = UIColor.black.withAlphaComponent(0.85)
+        tv.tintColor = .black
+        tv.backgroundColor = .clear
+        tv.smartQuotesType = .no
+        tv.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
+        tv.text = text
+        tv.delegate = context.coordinator
+        DispatchQueue.main.async { tv.becomeFirstResponder() }
+        return tv
+    }
+
+    func updateUIView(_ tv: TextView, context: Context) {
+        context.coordinator.parent = self
+        tv.onEscape = onFinish
+        if tv.text != text { tv.text = text }
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: NoteEditor
+        init(_ parent: NoteEditor) { self.parent = parent }
+
+        func textViewDidChange(_ tv: UITextView) { parent.text = tv.text }
+    }
+}
+#endif

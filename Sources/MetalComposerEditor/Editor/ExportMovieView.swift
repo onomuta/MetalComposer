@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import SwiftUI
 import UniformTypeIdentifiers
 import MetalComposerKit
@@ -136,7 +138,11 @@ struct ExportMovieView: View {
             Label("Saved \(url.lastPathComponent)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             HStack {
                 Spacer()
+                #if os(macOS)
                 Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                #else
+                ShareLink(item: url)
+                #endif
                 Button("Done") { exporter.resetState(); dismiss() }.keyboardShortcut(.defaultAction)
             }
         }

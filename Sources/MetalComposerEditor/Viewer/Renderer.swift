@@ -1,4 +1,3 @@
-import AppKit
 import MetalKit
 import QuartzCore
 import MetalComposerKit
@@ -60,6 +59,7 @@ final class Renderer: NSObject, MTKViewDelegate {
     }
 }
 
+#if os(macOS)
 /// MTKView that reports the mouse position in composition units.
 final class ComposerMTKView: MTKView {
     weak var renderer: Renderer?
@@ -93,3 +93,44 @@ final class ComposerMTKView: MTKView {
     override func mouseDown(with event: NSEvent) { update(event); renderer?.mouseDown = true }
     override func mouseUp(with event: NSEvent) { update(event); renderer?.mouseDown = false }
 }
+#else
+/// MTKView that reports the first finger (or the pointer, with a trackpad) in composition units.
+final class ComposerMTKView: MTKView {
+    weak var renderer: Renderer?
+
+    override init(frame: CGRect, device: MTLDevice?) {
+        super.init(frame: frame, device: device)
+        addGestureRecognizer(UIHoverGestureRecognizer(target: self, action: #selector(hovered)))
+    }
+
+    required init(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    private func update(_ p: CGPoint) {
+        guard bounds.width > 0, bounds.height > 0 else { return }
+        // UIKit's y runs down; composition units run up.
+        let x = Float(p.x / bounds.width) * 2 - 1
+        let y = (1 - Float(p.y / bounds.height) * 2) * Float(bounds.height / bounds.width)
+        renderer?.mouse = SIMD2(x, y)
+    }
+
+    @objc private func hovered(_ g: UIHoverGestureRecognizer) { update(g.location(in: self)) }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touches.first.map { update($0.location(in: self)) }
+        renderer?.mouseDown = true
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touches.first.map { update($0.location(in: self)) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        touches.first.map { update($0.location(in: self)) }
+        renderer?.mouseDown = false
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        renderer?.mouseDown = false
+    }
+}
+#endif
