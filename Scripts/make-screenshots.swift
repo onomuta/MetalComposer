@@ -1,5 +1,6 @@
 // Composes the App Store screenshots: each raw simulator capture in iOS/AppStore/Raw, framed on the
-// app icon's background with a caption above it, at the sizes App Store Connect asks for.
+// app icon's background with a caption above it, at the sizes App Store Connect asks for, in each
+// App Store language (iOS/AppStore/Screenshots/<language>/<device>).
 // Usage: swift Scripts/make-screenshots.swift   (run from the repository root)
 //
 // Raw captures: iPhone 17 Pro Max (portrait, 1320×2868) and iPad Pro 11-inch in landscape, which
@@ -18,6 +19,16 @@ struct Shot {
 let iPhoneSize = CGSize(width: 1320, height: 2868)
 let iPadSize = CGSize(width: 2752, height: 2064)
 
+/// Captions per App Store localization; each list matches the raw captures in order.
+struct Language {
+    var code: String
+    var iPhone: [Shot]
+    var iPad: [Shot]
+    /// Font for the caption and subtitle; nil is the system font.
+    var bold: String?
+    var medium: String?
+}
+
 let iPhoneShots = [
     Shot(raw: "01-play", caption: "Real-time visuals,\nin your pocket", subtitle: "Play node-based compositions at up to 120 fps"),
     Shot(raw: "02-editor", caption: "Wire patches into\nliving graphics", subtitle: "The same editor as the Mac app"),
@@ -28,6 +39,26 @@ let iPadShots = [
     Shot(raw: "01-play", caption: "Real-time visuals on iPad", subtitle: "Play compositions full screen, or on an external display"),
     Shot(raw: "02-editor", caption: "The full node editor, made for touch", subtitle: "Library, graph, viewer and inspector side by side"),
     Shot(raw: "03-cube", caption: "2D, 3D, particles and shaders", subtitle: "Build it all from patches"),
+]
+
+let japanese = Language(
+    code: "ja",
+    iPhone: [
+        Shot(raw: "01-play", caption: "リアルタイム映像を\nポケットに", subtitle: "ノードで組んだ作品を最大 120fps で再生"),
+        Shot(raw: "02-editor", caption: "パッチをつないで\n動く映像をつくる", subtitle: "Mac 版と同じエディタ"),
+        Shot(raw: "03-inspector", caption: "値を変えると\nすぐに見える", subtitle: "編集中もプレビューが見えたまま"),
+        Shot(raw: "04-cube", caption: "2D も 3D も\nパーティクルも", subtitle: "シェーダーまで、すべてパッチの組み合わせで"),
+    ],
+    iPad: [
+        Shot(raw: "01-play", caption: "iPad でリアルタイム映像", subtitle: "全画面で再生、外部ディスプレイにも出力"),
+        Shot(raw: "02-editor", caption: "フル機能のノードエディタを、タッチで", subtitle: "ライブラリ・グラフ・ビューア・インスペクタを一画面に"),
+        Shot(raw: "03-cube", caption: "2D・3D・パーティクル、そしてシェーダー", subtitle: "すべてパッチの組み合わせで"),
+    ],
+    bold: "HiraginoSans-W7", medium: "HiraginoSans-W5")
+
+let languages = [
+    Language(code: "en-US", iPhone: iPhoneShots, iPad: iPadShots, bold: nil, medium: nil),
+    japanese,
 ]
 
 let space = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -56,12 +87,12 @@ func rotatedClockwise(_ image: CGImage) -> CGImage {
 
 /// Draws centered text in a box whose top is `top` (top-left coordinates); returns the bottom.
 func drawText(_ text: String, in ctx: CGContext, canvas: CGSize, top: CGFloat, size: CGFloat, weight: NSFont.Weight,
-              color: CGColor, width: CGFloat) -> CGFloat {
+              fontName: String?, color: CGColor, width: CGFloat) -> CGFloat {
     let style = NSMutableParagraphStyle()
     style.alignment = .center
     style.lineSpacing = size * 0.08
     let attributed = NSAttributedString(string: text, attributes: [
-        .font: NSFont.systemFont(ofSize: size, weight: weight),
+        .font: fontName.flatMap { NSFont(name: $0, size: size) } ?? NSFont.systemFont(ofSize: size, weight: weight),
         .foregroundColor: NSColor(cgColor: color)!,
         .paragraphStyle: style,
     ])
@@ -76,7 +107,7 @@ func drawText(_ text: String, in ctx: CGContext, canvas: CGSize, top: CGFloat, s
     return top + ceil(fit.height)
 }
 
-func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool) {
+func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool, language: Language) {
     var image = loadImage("iOS/AppStore/Raw/\(device)/\(shot.raw).png")
     if landscape, image.height > image.width { image = rotatedClockwise(image) }
 
@@ -97,10 +128,10 @@ func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool) {
     let margin = unit * 0.07
     var y = landscape ? unit * 0.06 : unit * 0.11
     y = drawText(shot.caption, in: ctx, canvas: canvas, top: y, size: unit * (landscape ? 0.058 : 0.085),
-                 weight: .bold, color: rgb(0xFFFFFF), width: canvas.width - margin * 2)
+                 weight: .bold, fontName: language.bold, color: rgb(0xFFFFFF), width: canvas.width - margin * 2)
     y += unit * 0.02
     y = drawText(shot.subtitle, in: ctx, canvas: canvas, top: y, size: unit * (landscape ? 0.03 : 0.04),
-                 weight: .medium, color: rgb(0xFFFFFF, 0.75), width: canvas.width - margin * 2)
+                 weight: .medium, fontName: language.medium, color: rgb(0xFFFFFF, 0.75), width: canvas.width - margin * 2)
 
     // The screen, as large as fits under the caption, with rounded corners and a soft shadow.
     let top = y + unit * (landscape ? 0.05 : 0.07)
@@ -128,12 +159,15 @@ func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool) {
     ctx.setLineWidth(unit * 0.003)
     ctx.strokePath()
 
-    let out = "iOS/AppStore/Screenshots/\(device)/\(shot.raw).png"
-    try! FileManager.default.createDirectory(atPath: "iOS/AppStore/Screenshots/\(device)", withIntermediateDirectories: true)
+    let folder = "iOS/AppStore/Screenshots/\(language.code)/\(device)"
+    let out = "\(folder)/\(shot.raw).png"
+    try! FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
     let rep = NSBitmapImageRep(cgImage: ctx.makeImage()!)
     try! rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: out))
     print("Wrote \(out) (\(Int(canvas.width))×\(Int(canvas.height)))")
 }
 
-for shot in iPhoneShots { compose(shot, device: "iPhone", canvas: iPhoneSize, landscape: false) }
-for shot in iPadShots { compose(shot, device: "iPad", canvas: iPadSize, landscape: true) }
+for language in languages {
+    for shot in language.iPhone { compose(shot, device: "iPhone", canvas: iPhoneSize, landscape: false, language: language) }
+    for shot in language.iPad { compose(shot, device: "iPad", canvas: iPadSize, landscape: true, language: language) }
+}
