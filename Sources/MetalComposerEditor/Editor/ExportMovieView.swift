@@ -56,7 +56,7 @@ struct ExportMovieView: View {
                 }
                 Picker("Resolution", selection: presetSelection) {
                     ForEach(MovieSettings.presets, id: \.name) { p in
-                        Text(verbatim: "\(p.name)  (\(p.width)×\(p.height))").tag(p.name)
+                        Text(verbatim: "\(loc(p.name))  (\(p.width)×\(p.height))").tag(p.name)
                     }
                     Text("Custom").tag("Custom")
                 }
@@ -74,11 +74,11 @@ struct ExportMovieView: View {
                     ForEach(MovieSettings.frameRates, id: \.self) { Text(verbatim: "\($0) fps").tag($0) }
                 }
                 Picker("Codec", selection: $exporter.settings.codec) {
-                    ForEach(MovieSettings.Codec.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(MovieSettings.Codec.allCases) { Text(loc($0.rawValue)).tag($0) }
                 }
                 if exporter.settings.codec.usesBitrate {
                     Picker("Quality", selection: $exporter.settings.quality) {
-                        ForEach(MovieSettings.Quality.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(MovieSettings.Quality.allCases) { Text(loc($0.rawValue)).tag($0) }
                     }
                 }
             }
@@ -110,12 +110,12 @@ struct ExportMovieView: View {
 
     private var summary: String {
         let s = exporter.settings.normalized
-        var parts = ["\(s.width)×\(s.height)", "\(s.fps) fps", "\(s.frameCount) frames"]
+        var parts = ["\(s.width)×\(s.height)", "\(s.fps) fps", loc("%ld frames", s.frameCount)]
         if s.width != exporter.settings.width || s.height != exporter.settings.height {
-            parts[0] += " (adjusted for the codec)"
+            parts[0] += loc(" (adjusted for the codec)")
         }
         if let bytes = exporter.settings.estimatedBytes {
-            parts.append("about " + ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))
+            parts.append(loc("about %@", ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)))
         }
         return parts.joined(separator: " · ")
     }
@@ -125,7 +125,7 @@ struct ExportMovieView: View {
     private func progress(frame: Int, total: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             ProgressView(value: Double(frame), total: Double(max(total, 1)))
-            Text(verbatim: "Rendering frame \(frame) of \(total)…").monospacedDigit().foregroundStyle(.secondary)
+            Text(verbatim: loc("Rendering frame %ld of %ld…", frame, total)).monospacedDigit().foregroundStyle(.secondary)
             HStack {
                 Spacer()
                 Button("Stop") { exporter.cancel() }.keyboardShortcut(.cancelAction)
@@ -135,7 +135,7 @@ struct ExportMovieView: View {
 
     private func finished(_ url: URL) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Saved \(url.lastPathComponent)", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            Label(loc("Saved %@", url.lastPathComponent), systemImage: "checkmark.circle.fill").foregroundStyle(.green)
             HStack {
                 Spacer()
                 #if os(macOS)

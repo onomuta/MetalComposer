@@ -51,7 +51,7 @@ struct LibraryView: View {
     var body: some View {
         let results = results
         VStack(spacing: 0) {
-            TextField(Self.searchPrompt, text: $search)
+            TextField(loc(Self.searchPrompt), text: $search)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
                 .padding(8)
@@ -72,7 +72,7 @@ struct LibraryView: View {
                 List {
                     if search.isEmpty {
                         ForEach(PatchRegistry.sections, id: \.self) { section in
-                            Section(section) {
+                            Section(loc(section)) {
                                 ForEach(results.filter { $0.librarySection == section }, id: \.typeID) { type in
                                     row(type, isHighlighted: searchFocused && results.firstIndex { $0 == type } == highlighted)
                                         .id(type.typeID)
@@ -126,7 +126,7 @@ struct LibraryView: View {
                 RoundedRectangle(cornerRadius: 2).fill(type.category.color).frame(width: 4, height: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(type.title).foregroundStyle(.primary)
-                    Text(type.summary).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
+                    Text(loc(type.summary)).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                 }
                 Spacer(minLength: 0)
             }

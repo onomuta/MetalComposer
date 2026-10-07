@@ -1,0 +1,2 @@
+/* Japanese Info.plist strings (Mac and iOS). */
+"NSMicrophoneUsageDescription" = "作品の中の音声パッチが、マイクの音に反応するために使います。音は端末内で解析するだけで、録音や送信はしません。";

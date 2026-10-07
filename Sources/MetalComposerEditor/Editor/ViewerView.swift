@@ -106,7 +106,7 @@ struct ViewerPanel: View {
                         Button(action: onTogglePopOut) {
                             Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
                         }
-                        .help(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)")
+                        .help(loc(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)"))
                     }
                     phoneModeButtons
                 }
@@ -167,7 +167,7 @@ struct ViewerPanel: View {
             Button { withAnimation { phoneMode.wrappedValue = collapsed ? .expanded : .collapsed } } label: {
                 Image(systemName: collapsed ? "chevron.down" : "chevron.up")
             }
-            .accessibilityLabel(collapsed ? "Expand Viewer" : "Collapse Viewer")
+            .accessibilityLabel(loc(collapsed ? "Expand Viewer" : "Collapse Viewer"))
             Button { withAnimation { phoneMode.wrappedValue = .floating } } label: {
                 Image(systemName: "pip.enter")
             }

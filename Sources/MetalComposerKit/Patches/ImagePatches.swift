@@ -42,7 +42,7 @@ package final class ImageImporterPatch: Patch {
                         data: bytes, options: [.SRGB: false, .origin: MTKTextureLoader.Origin.topLeft])
                     setStatus(nil)
                 } catch {
-                    setStatus("Could not load the embedded image: \(error.localizedDescription)")
+                    setStatus(loc("Could not load the embedded image: %@", error.localizedDescription))
                 }
             }
             return ["image": .image(texture)]
@@ -66,7 +66,7 @@ package final class ImageImporterPatch: Patch {
                         options: [.SRGB: false, .origin: MTKTextureLoader.Origin.topLeft])
                     setStatus(nil)
                 } catch {
-                    setStatus("Could not load image: \(error.localizedDescription)")
+                    setStatus(loc("Could not load image: %@", error.localizedDescription))
                 }
             }
         }
@@ -237,7 +237,7 @@ package final class TextImagePatch: Patch {
         cacheBytes += bytes
         // A composition may be opened on a Mac that doesn't have the font installed.
         setStatus(Self.font(family: family, style: style, size: size) != nil
-                  ? nil : "Font \"\(family)\" is not installed; using the system font.")
+                  ? nil : loc("Font \"%@\" is not installed; using the system font.", family))
         return ["image": .image(texture)]
     }
 

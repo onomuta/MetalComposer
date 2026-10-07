@@ -1,0 +1,255 @@
+/* Japanese translation of Mirage Composer (Mac and iOS).
+   Keys are the English text. Patch and port names stay in English on purpose:
+   they are technical terms shared with the file format and the documentation. */
+
+/* MARK: Common */
+"Cancel" = "キャンセル";
+"Done" = "完了";
+"OK" = "OK";
+"Delete" = "削除";
+"Duplicate" = "複製";
+"Copy" = "コピー";
+"Cut" = "カット";
+"Paste" = "ペースト";
+"Select All" = "すべてを選択";
+"Undo" = "取り消す";
+"Redo" = "やり直す";
+"Undo %@" = "“%@”を取り消す";
+"Redo %@" = "“%@”をやり直す";
+"Save" = "保存";
+"Save As…" = "別名で保存…";
+"Share…" = "共有…";
+"Open…" = "開く…";
+"Open" = "開く";
+"Edit" = "編集";
+"Play" = "再生";
+"Pause" = "一時停止";
+"Close" = "閉じる";
+"Restart" = "最初から";
+"Reset" = "リセット";
+"Problems" = "問題";
+"Parameters" = "パラメータ";
+"Inspector" = "インスペクタ";
+"New Composition" = "新規作品";
+"Export Movie…" = "ムービーを書き出す…";
+"Export Movie" = "ムービーを書き出す";
+"Untitled" = "名称未設定";
+"%@ copy" = "%@ のコピー";
+
+/* MARK: Mac menus and windows */
+"Demos" = "デモ";
+"Patch" = "パッチ";
+"Viewer" = "ビューア";
+"Group into Macro" = "マクロにまとめる";
+"Explode Macro" = "マクロを展開";
+"Add Comment" = "コメントを追加";
+"Open Macro" = "マクロを開く";
+"Close Macro" = "マクロを閉じる";
+"Bring Back Viewer" = "ビューアをメインウインドウに戻す";
+"Pop Out Viewer" = "ビューアを別ウインドウに";
+"Hide Patch Library" = "パッチライブラリを隠す";
+"Show Patch Library" = "パッチライブラリを表示";
+"Close Patch Library" = "パッチライブラリを閉じる";
+"Find Patch…" = "パッチを検索…";
+"Find Patch" = "パッチを検索";
+"Play / Pause" = "再生／一時停止";
+"Bring Back" = "戻す";
+"The viewer is in its own window." = "ビューアは別ウインドウに表示しています。";
+"Appearance" = "外観";
+"Use System Setting" = "システム設定に合わせる";
+"Light" = "ライト";
+"Dark" = "ダーク";
+"Hide Patch Library (⌥⌘L)" = "パッチライブラリを隠す（⌥⌘L）";
+"Show Patch Library (⌥⌘L)" = "パッチライブラリを表示（⌥⌘L）";
+
+/* MARK: Viewer */
+"Put the viewer back in the main window (⌥⌘V)" = "ビューアをメインウインドウに戻す（⌥⌘V）";
+"Open the viewer in its own window (⌥⌘V)" = "ビューアを別ウインドウで開く（⌥⌘V）";
+"Play / Pause (⌥⌘P)" = "再生／一時停止（⌥⌘P）";
+"Preview aspect ratio" = "プレビューの縦横比";
+"Restart time" = "時間を最初に戻す";
+"Expand Viewer" = "ビューアを広げる";
+"Collapse Viewer" = "ビューアをたたむ";
+"Float Viewer" = "ビューアを小窓にする";
+"Dock Viewer" = "ビューアを元に戻す";
+"Try the composition's parameters" = "作品のパラメータを試す";
+
+/* MARK: Graph editor */
+"Add Comment Here" = "ここにコメントを追加";
+"Fit" = "全体";
+"Root" = "ルート";
+"Esc to go up" = "Esc で上の階層へ";
+"No image" = "画像なし";
+"Not evaluated (nothing uses it)" = "未評価（使われていません）";
+"Open %@" = "%@ を開く";
+"Double-click to write a note" = "ダブルクリックしてメモを書く";
+"Double-tap to write a note" = "ダブルタップしてメモを書く";
+
+/* MARK: Inspector */
+"Select a patch to edit its inputs" = "パッチを選ぶと、入力を編集できます";
+"Right-click the canvas or use the library to add patches.\nDrag from an output to an input to connect; drag on empty space to select several." = "キャンバスを右クリックするか、ライブラリからパッチを追加します。\n出力から入力へドラッグしてつなぎます。何もない所をドラッグすると、複数を選択できます。";
+"Touch and hold the canvas or use the library to add patches.\nDrag from an output to an input to connect; drag empty space to move around. Touch and hold a port to see its value." = "キャンバスを長押しするか、ライブラリからパッチを追加します。\n出力から入力へドラッグしてつなぎます。何もない所をドラッグすると画面が動きます。ポートを長押しすると、今の値が見られます。";
+"%lld patches selected" = "%lld 個のパッチを選択中";
+"⌘G group · ⌘D duplicate · ⌘C / ⌘V copy & paste" = "⌘G まとめる · ⌘D 複製 · ⌘C / ⌘V コピー＆ペースト";
+"Layer" = "レイヤ";
+"Bring forward" = "前面へ";
+"Send backward" = "背面へ";
+"Inputs" = "入力";
+"Outputs" = "出力";
+"Open %@  (%@)" = "%@ を開く（%@）";
+"double-click" = "ダブルクリック";
+"double-tap" = "ダブルタップ";
+"Explode" = "展開";
+"Move the contents out of the macro (⇧⌘G)" = "中身をマクロの外に出す（⇧⌘G）";
+"Choose…" = "選択…";
+"System Font" = "システムフォント";
+"Connect an image" = "画像をつないでください";
+"Connect a structure" = "Structure をつないでください";
+"number or text" = "数値またはテキスト";
+"Name" = "名前";
+"Port Name" = "ポート名";
+"The file couldn't be read, so nothing is embedded. Choose the file again." = "ファイルを読み込めなかったため、埋め込まれていません。ファイルを選び直してください。";
+"Embedded %@. The composition works without the file." = "%@ を埋め込み済みです。元のファイルがなくても作品は動きます。";
+"Embedded %@. Large embedded images make the composition slow to open, and apps that play it may pause while it loads. Consider keeping this image as a file." = "%@ を埋め込み済みです。大きな画像を埋め込むと作品を開くのに時間がかかり、再生するアプリが読み込み中に止まることがあります。この画像はファイルのままにすることも検討してください。";
+"Knob" = "ノブ";
+"Drag to change (⌥ fine, ⇧ coarse) · double-click to reset" = "ドラッグで変更（⌥ 微調整、⇧ 粗調整）· ダブルクリックでリセット";
+
+/* MARK: Library */
+"Search patches  (⌘↩)" = "パッチを検索  (⌘↩)";
+"Search patches" = "パッチを検索";
+"Results" = "検索結果";
+"Add %@" = "%@ を追加";
+"Providers" = "プロバイダ";
+"Processors" = "プロセッサ";
+"Consumers" = "コンシューマ";
+"Structures" = "Structure";
+"Macros" = "マクロ";
+"Utility" = "ユーティリティ";
+
+/* MARK: Parameters */
+"Set as Defaults" = "既定値にする";
+"Set by the host app" = "ホストアプリが設定";
+"Values here drive the viewer the way a host app would set them. They aren't saved with the composition." = "ここで変えた値は、組み込み先のアプリから渡したときと同じように Viewer に反映されます。作品には保存されません。";
+"Go back to the default values" = "既定値に戻す";
+"Store these values as the Macro Inputs' Default Value" = "この値を Macro Input の既定値として保存";
+
+/* MARK: Movie export */
+"Duration" = "長さ";
+"seconds" = "秒";
+"Resolution" = "解像度";
+"Custom" = "カスタム";
+"Size" = "サイズ";
+"Frame Rate" = "フレームレート";
+"Codec" = "コーデック";
+"Quality" = "画質";
+"Standard" = "標準";
+"High" = "高";
+"Maximum" = "最高";
+"ProRes 4444 (with alpha)" = "ProRes 4444（アルファ付き）";
+"Square 1080" = "正方形 1080";
+"Vertical 1080×1920" = "縦長 1080×1920";
+"Rendered offline from t = 0 at exact frame times, so it never drops frames. The mouse stays at the center." = "t = 0 から各フレームの正確な時刻で描くので、コマ落ちしません。マウスは中央のままです。";
+"Export cancelled." = "書き出しを中止しました。";
+"Export…" = "書き出す…";
+"%ld frames" = "%ld フレーム";
+" (adjusted for the codec)" = "（コーデックに合わせて調整）";
+"about %@" = "約 %@";
+"Rendering frame %ld of %ld…" = "フレーム %ld / %ld を描画中…";
+"Stop" = "停止";
+"Saved %@" = "%@ を保存しました";
+"Show in Finder" = "Finder に表示";
+"These settings aren't supported by the encoder." = "この設定はエンコーダに対応していません。";
+"Couldn't start writing the movie." = "ムービーの書き込みを始められませんでした。";
+"Couldn't create a Metal texture cache." = "Metal のテクスチャキャッシュを作れませんでした。";
+"The encoder has no buffers." = "エンコーダのバッファがありません。";
+"Couldn't allocate frame %ld." = "フレーム %ld のメモリを確保できませんでした。";
+"Couldn't write frame %ld." = "フレーム %ld を書き込めませんでした。";
+"Couldn't finish the movie." = "ムービーを書き終えられませんでした。";
+
+/* MARK: Files and alerts */
+"“%@” already exists" = "“%@” はすでに存在します";
+"Choose a different name." = "別の名前を選んでください。";
+"Some patches couldn't be loaded" = "読み込めなかったパッチがあります";
+"This composition uses patches this version of Mirage Composer doesn't know: %@. They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them." = "この作品は、このバージョンの Mirage Composer が知らないパッチを使っています: %@。それらのパッチは、つながりとともに読み飛ばしました。新しいバージョンで保存された作品の可能性があります。ここで保存すると、それらのパッチは失われます。";
+"This composition was saved by a newer Mirage Composer (format %ld); this engine reads up to %ld." = "この作品は新しい Mirage Composer で保存されています（形式 %ld）。このエンジンが読めるのは形式 %ld までです。";
+"Unknown patch \"%@\" (saved by a newer Mirage Composer?); it was skipped along with its connections." = "不明なパッチ “%@”（新しい Mirage Composer で保存された可能性があります）。つながりとともに読み飛ばしました。";
+
+/* MARK: Undo action names */
+"Change %@" = "%@ を変更";
+"Change Connection" = "接続を変更";
+"Change Layer" = "レイヤを変更";
+"Connect" = "接続";
+"Move" = "移動";
+"Rename" = "名前を変更";
+"Resize Comment" = "コメントのサイズを変更";
+"Import Image" = "画像を読み込む";
+"Import Images" = "画像を読み込む";
+
+/* MARK: Problems reported by patches */
+"Font \"%@\" is not installed; using the system font." = "フォント “%@” が入っていないため、システムフォントを使っています。";
+"Could not load the embedded image: %@" = "埋め込まれた画像を読み込めませんでした: %@";
+"Could not load image: %@" = "画像を読み込めませんでした: %@";
+"Waiting for microphone permission…" = "マイクの許可を待っています…";
+"Microphone access was denied. Allow it in %@." = "マイクの使用が許可されませんでした。「%@」で許可してください。";
+"Microphone access is off. Allow it in %@." = "マイクの使用がオフになっています。「%@」で許可してください。";
+"Couldn't start audio input: %@" = "音声入力を開始できませんでした: %@";
+"No audio input device." = "音声入力デバイスがありません。";
+"Settings › Privacy & Security › Microphone" = "設定 › プライバシーとセキュリティ › マイク";
+"System Settings › Privacy & Security › Microphone" = "システム設定 › プライバシーとセキュリティ › マイク";
+
+/* MARK: iOS app */
+"Recent" = "最近使った項目";
+"Couldn't Play" = "再生できません";
+"This device doesn't support Metal." = "この端末は Metal に対応していません。";
+"Couldn't open %@: %@" = "%@ を開けませんでした: %@";
+"External display connected (%ld×%ld). Compositions play on it." = "外部ディスプレイに接続中です（%ld×%ld）。作品はそちらで再生されます。";
+"Playing on the external display" = "外部ディスプレイで再生中";
+
+/* MARK: Patch descriptions */
+"2D image or solid quad that always faces the viewer. Height 0 keeps the image aspect ratio." = "常に正面を向く 2D の画像または塗りつぶしの四角形。高さを 0 にすると、画像の縦横比を保ちます。";
+"A constant value you can fan out to many inputs." = "一定の値。複数の入力に配れます。";
+"A note on the canvas. Double-click (or double-tap) to edit; drag the corner to resize." = "キャンバスに置くメモ。ダブルクリック（ダブルタップ）で編集し、角をドラッグして大きさを変えます。";
+"Adds up Value × elapsed time (Value is a rate per second). Reset returns to 0." = "Value × 経過時間を足し合わせます（Value は 1 秒あたりの量）。Reset で 0 に戻ります。";
+"Animates from a start to an end value over time with easing." = "開始値から終了値まで、イージング付きで時間とともに変化させます。";
+"Applies a Core Image filter on the GPU." = "Core Image のフィルタを GPU でかけます。";
+"Applies an arithmetic operation to two values." = "2 つの値に四則演算などをします。";
+"Box in 3D space (position, rotation, size) with a color and an image on each face." = "3D 空間の直方体（位置・回転・大きさ）。面ごとに色と画像を設定できます。";
+"Builds a color from hue, saturation and luminosity." = "色相・彩度・輝度から色を作ります。";
+"Builds a color from red, green, blue and alpha." = "赤・緑・青・アルファから色を作ります。";
+"Builds a time series of its input (numbers, images…). Oldest entries drop off past Size." = "入力（数値、画像など）を時系列にためます。Size を超えると古いものから消えます。";
+"Combines its inputs (any type) into one structure. Optional keys name the members." = "入力（型は問わない）を 1 つの Structure にまとめます。キーを付けて名前を付けられます。";
+"Combines two booleans with AND, OR, XOR, NOT, NAND or NOR." = "2 つの真偽値を AND、OR、XOR、NOT、NAND、NOR で組み合わせます。";
+"Compares two values." = "2 つの値を比べます。";
+"Counts up or down each time a signal turns on (e.g. mouse clicks). Stays at 0 while Reset Signal is on." = "信号がオンになるたびに（マウスのクリックなど）数を増やしたり減らしたりします。Reset Signal がオンの間は 0 のままです。";
+"Cylinder or cone in 3D space. The side image wraps around; the caps have their own images." = "3D 空間の円柱または円錐。側面の画像は周りに巻き付き、上下の面には別の画像を設定できます。";
+"Emits and draws particles (GPU instanced). Follows its Time Base, so it can be stopped, rewound or scrubbed." = "パーティクルを放出して描きます（GPU インスタンシング）。Time Base に従うので、止めたり、巻き戻したり、時間を動かしたりできます。";
+"Evaluates a formula of a, b, c, d and t (time). e.g. sin(t*2)*a" = "a、b、c、d と t（時間）を使った数式を計算します。例：sin(t*2)*a";
+"Fills the whole viewer with a color." = "Viewer 全体を 1 色で塗ります。";
+"Follows a changing value gradually; separate durations for increasing and decreasing." = "変化する値になめらかに追従します。増えるときと減るときで、かける時間を別々に設定できます。";
+"Frequency bands (0…1) of the microphone / default input, plus Bass, Mid, Treble and a spectrum image." = "マイク（既定の入力）の周波数帯ごとの強さ（0〜1）。Bass、Mid、Treble とスペクトラム画像も出力します。";
+"Full-screen fragment shader written in Metal Shading Language, compiled live." = "Metal Shading Language で書く全画面のフラグメントシェーダ。その場でコンパイルされます。";
+"Groups patches into one. Double-click (or double-tap) to open; publish ports with Macro Input/Output." = "複数のパッチを 1 つにまとめます。ダブルクリック（ダブルタップ）で中に入り、Macro Input／Output でポートを外に出します。";
+"Image or solid quad in 3D space (position and rotation on X/Y/Z). Height 0 keeps the image aspect ratio." = "3D 空間の画像または塗りつぶしの四角形（X/Y/Z の位置と回転）。高さを 0 にすると、画像の縦横比を保ちます。";
+"Inside a macro: adds an input port to the macro. Its name is the port name." = "マクロの中に置くと、マクロに入力ポートが増えます。パッチの名前がポート名になります。";
+"Inside a macro: adds an output port to the macro. Its name is the port name." = "マクロの中に置くと、マクロに出力ポートが増えます。パッチの名前がポート名になります。";
+"Inside an Iterator: current index, count and position (0…1)." = "Iterator の中で使います。今の番号、回数、位置（0〜1）を出力します。";
+"Keeps a value inside a range by clamping, wrapping or mirroring." = "値を範囲内に収めます（切り詰め、折り返し、反転）。";
+"Loads an image file (PNG, JPEG, HEIC…) into a texture." = "画像ファイル（PNG、JPEG、HEIC など）を読み込みます。";
+"Low frequency oscillator driven by patch time." = "パッチの時間で動く低周波発振器（LFO）。";
+"Maps a value from one range to another." = "値をある範囲から別の範囲に変換します。";
+"Mouse position over the viewer in composition units." = "Viewer 上のマウス（指）の位置。作品の座標で出力します。";
+"Moves, rotates and scales everything rendered inside it in 3D." = "中で描いたものすべてを 3D で移動・回転・拡大縮小します。";
+"Number of members in a structure." = "Structure の要素の数。";
+"Outputs the input selected by Source Index (0-based)." = "Source Index（0 から数える）で選んだ入力を出力します。";
+"Picks the member at an index (0-based). Out of range outputs nothing." = "指定した番号（0 から数える）の要素を取り出します。範囲外のときは何も出力しません。";
+"Picks the member with a given key. Missing keys output nothing." = "指定したキーの要素を取り出します。キーがないときは何も出力しません。";
+"Random string of a given length from the chosen characters. Same seed and time, same string." = "選んだ文字から、指定した長さのランダムな文字列を作ります。シードと時間が同じなら、同じ文字列になります。";
+"Random value that changes a given number of times per second." = "1 秒に指定した回数だけ変わるランダムな値。";
+"Renders a string into an image (white, tint it with Sprite color)." = "文字列を画像にします（白。Sprite の色で色を付けられます）。";
+"Renders its contents offscreen and outputs the image. Loop the output back in for feedback." = "中身を画面外に描いて、画像として出力します。出力を入力に戻すとフィードバックになります。";
+"Rounds a value, optionally to a multiple of a step." = "値を丸めます。指定した刻みの倍数にもできます。";
+"Routes the input to the output selected by Destination Index (0-based)." = "入力を、Destination Index（0 から数える）で選んだ出力に送ります。";
+"Runs its contents N times per frame. Use Iterator Variables inside for index/position." = "中身を 1 フレームに N 回実行します。番号や位置は、中に置いた Iterator Variables で取得します。";
+"Seconds since playback started." = "再生を始めてからの秒数。";
+"Sphere in 3D space. The image wraps around it as an equirectangular (latitude/longitude) map." = "3D 空間の球。画像は正距円筒図法（緯度・経度）として周りに巻き付きます。";
+"Volume (peak and RMS) and waveform of the microphone / default audio input." = "マイク（既定の音声入力）の音量（ピークと RMS）と波形。";

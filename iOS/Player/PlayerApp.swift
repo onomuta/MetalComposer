@@ -4,6 +4,12 @@ import MetalComposerKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// The app's translation of `key` from Localizable.strings, formatted with `arguments`.
+func loc(_ key: String, _ arguments: CVarArg...) -> String {
+    let format = NSLocalizedString(key, comment: "")
+    return arguments.isEmpty ? format : String(format: format, arguments: arguments)
+}
+
 extension UTType {
     static let metalComposition = UTType("dev.metalcomposer.composition") ?? .json
 }
@@ -69,7 +75,7 @@ final class Library: ObservableObject {
 
     func play(_ source: Source) {
         guard let engine = Engine.shared else {
-            error = "This device doesn't support Metal."
+            error = loc("This device doesn't support Metal.")
             return
         }
         do {
@@ -93,7 +99,7 @@ final class Library: ObservableObject {
                 remember(url)
             }
         } catch {
-            self.error = "Couldn't open \(source.title): \(error.localizedDescription)"
+            self.error = loc("Couldn't open %@: %@", source.title, error.localizedDescription)
         }
     }
 
@@ -112,7 +118,7 @@ final class Library: ObservableObject {
     /// The editor needs Metal; say so rather than open it without.
     private var canEdit: Bool {
         if Engine.shared != nil { return true }
-        error = "This device doesn't support Metal."
+        error = loc("This device doesn't support Metal.")
         return false
     }
 
@@ -185,7 +191,7 @@ struct HomeView: View {
             List {
                 if let size = external.size {
                     Section {
-                        Label("External display connected (\(Int(size.width))×\(Int(size.height))). Compositions play on it.",
+                        Label(loc("External display connected (%ld×%ld). Compositions play on it.", Int(size.width), Int(size.height)),
                               systemImage: "tv")
                     }
                 }

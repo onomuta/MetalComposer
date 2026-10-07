@@ -121,7 +121,7 @@ final class Composition: ObservableObject {
 
     @discardableResult
     func add(_ type: Patch.Type, at position: CGPoint) -> Patch {
-        checkpoint("Add \(type.title)")
+        checkpoint(loc("Add %@", type.title))
         let patch = type.init(position: position)
         graph.nodes.append(patch)
         selection = [patch.id]
@@ -160,7 +160,7 @@ final class Composition: ObservableObject {
     }
 
     func setParam(_ node: Patch, _ key: String, _ value: Value) {
-        let newUndoStep = checkpoint("Change \(node.displayTitle)", coalesce: "\(node.id)/\(key)")
+        let newUndoStep = checkpoint(loc("Change %@", node.displayTitle), coalesce: "\(node.id)/\(key)")
         let portsBefore = Self.portSignature(node)
         node.params[key] = value
         if let importer = node as? ImageImporterPatch, key == "path" || key == "embed" { updateEmbeddedImage(importer) }

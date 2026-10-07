@@ -71,7 +71,7 @@ final class EditorSession: ObservableObject {
     private var accessing: URL?
     private var subscriptions: Set<AnyCancellable> = []
     /// What a new composition is called when it is first saved.
-    private var newName = "Untitled"
+    private var newName = loc("Untitled")
 
     private var composition: Composition { state.composition }
 
@@ -139,7 +139,7 @@ final class EditorSession: ObservableObject {
         }
         let target = url.deletingLastPathComponent().appendingPathComponent(name).appendingPathExtension("mcomp")
         guard !FileManager.default.fileExists(atPath: target.path) else {
-            state.show(AppAlert(title: "“\(name)” already exists", message: "Choose a different name."))
+            state.show(AppAlert(title: loc("“%@” already exists", name), message: loc("Choose a different name.")))
             return
         }
         save()
@@ -169,7 +169,7 @@ final class EditorSession: ObservableObject {
         save()
         let folder = composition.fileURL?.deletingLastPathComponent() ?? Self.documents
         guard let folder, let data = currentData(),
-              let target = Self.unusedURL(named: "\(title) copy", in: folder) else { return }
+              let target = Self.unusedURL(named: loc("%@ copy", title), in: folder) else { return }
         if state.write(to: target) { savedData = data }
     }
 

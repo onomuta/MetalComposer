@@ -34,7 +34,7 @@ struct InspectorView: View {
             VStack(spacing: 8) {
                 Image(systemName: "square.on.square.dashed").font(.largeTitle).foregroundStyle(.tertiary)
                 Text("Select a patch to edit its inputs").foregroundStyle(.secondary)
-                Text(Self.emptyHint)
+                Text(loc(Self.emptyHint))
                     .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -59,14 +59,14 @@ private struct NodeInspector: View {
             Section {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(node.title).font(.headline)
-                    Text(node.summary).font(.caption).foregroundStyle(.secondary)
+                    Text(loc(node.summary)).font(.caption).foregroundStyle(.secondary)
                 }
-                TextField(node is PublishedPortPatch ? "Port Name" : "Name", text: Binding(
+                TextField(loc(node is PublishedPortPatch ? "Port Name" : "Name"), text: Binding(
                     get: { node.customTitle ?? "" },
                     set: { composition.rename(node, $0) }), prompt: Text(node.title))
                 if node.subgraph != nil {
                     HStack {
-                        Button("Open \(node.displayTitle)  (\(Self.doubleClick))") { composition.enter(node) }
+                        Button(loc("Open %@  (%@)", node.displayTitle, loc(Self.doubleClick))) { composition.enter(node) }
                         if composition.canExplode(node) {
                             Button("Explode") { composition.explodeMacro(node) }.help("Move the contents out of the macro (⇧⌘G)")
                         }

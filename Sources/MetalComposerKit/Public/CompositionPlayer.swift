@@ -88,7 +88,7 @@ public final class CompositionPlayer {
         public var errorDescription: String? {
             switch self {
             case .unsupportedVersion(let v):
-                return "This composition was saved by a newer Mirage Composer (format \(v)); this engine reads up to \(CompositionPlayer.supportedFormatVersion)."
+                return loc("This composition was saved by a newer Mirage Composer (format %ld); this engine reads up to %ld.", v, CompositionPlayer.supportedFormatVersion)
             }
         }
     }
@@ -171,7 +171,7 @@ public final class CompositionPlayer {
             }
         }
         let unknown = unknownPatchTypes.map {
-            "Unknown patch \"\($0)\" (saved by a newer Mirage Composer?); it was skipped along with its connections."
+            loc("Unknown patch \"%@\" (saved by a newer Mirage Composer?); it was skipped along with its connections.", $0)
         }
         return unknown + collect(graph)
     }

@@ -132,10 +132,9 @@ final class AppState: ObservableObject {
             let unknown = try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
             if !unknown.isEmpty {
-                show(AppAlert(title: "Some patches couldn't be loaded",
-                              message: "This composition uses patches this version of Mirage Composer doesn't know: "
-                                + unknown.joined(separator: ", ")
-                                + ". They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them."))
+                show(AppAlert(title: loc("Some patches couldn't be loaded"),
+                              message: loc("This composition uses patches this version of Mirage Composer doesn't know: %@. They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them.",
+                                           unknown.joined(separator: ", "))))
             }
         } catch {
             show(AppAlert(error))
@@ -226,7 +225,7 @@ struct ContentView: View {
                 Button {
                     if layout == .columns { state.showLibrary.toggle() } else { showFloatingLibrary.toggle() }
                 } label: { Image(systemName: "sidebar.left") }
-                    .help(state.showLibrary ? "Hide Patch Library (⌥⌘L)" : "Show Patch Library (⌥⌘L)")
+                    .help(loc(state.showLibrary ? "Hide Patch Library (⌥⌘L)" : "Show Patch Library (⌥⌘L)"))
             }
             if layout == .phone {
                 ToolbarItem(placement: .primaryAction) {

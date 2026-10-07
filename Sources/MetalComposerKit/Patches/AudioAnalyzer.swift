@@ -52,16 +52,16 @@ package final class AudioAnalyzer {
             startEngine()
         case .notDetermined:
             starting = true
-            setProblem("Waiting for microphone permission…")
+            setProblem(loc("Waiting for microphone permission…"))
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
                     self.starting = false
-                    if granted { self.startEngine() } else { self.setProblem("Microphone access was denied. Allow it in \(Self.settingsPath).") }
+                    if granted { self.startEngine() } else { self.setProblem(loc("Microphone access was denied. Allow it in %@.", loc(Self.settingsPath))) }
                 }
             }
         default:
             starting = true // don't ask again every frame
-            setProblem("Microphone access is off. Allow it in \(Self.settingsPath).")
+            setProblem(loc("Microphone access is off. Allow it in %@.", loc(Self.settingsPath)))
         }
     }
 
@@ -79,7 +79,7 @@ package final class AudioAnalyzer {
             try session.setCategory(.playAndRecord, mode: .measurement, options: [.mixWithOthers, .defaultToSpeaker])
             try session.setActive(true)
         } catch {
-            setProblem("Couldn't start audio input: \(error.localizedDescription)")
+            setProblem(loc("Couldn't start audio input: %@", error.localizedDescription))
             starting = true
             return
         }
@@ -88,7 +88,7 @@ package final class AudioAnalyzer {
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0 else {
-            setProblem("No audio input device.")
+            setProblem(loc("No audio input device."))
             starting = true
             return
         }
@@ -99,7 +99,7 @@ package final class AudioAnalyzer {
             try engine.start()
         } catch {
             input.removeTap(onBus: 0)
-            setProblem("Couldn't start audio input: \(error.localizedDescription)")
+            setProblem(loc("Couldn't start audio input: %@", error.localizedDescription))
             starting = true
             return
         }

@@ -41,7 +41,7 @@ extension AppState {
         if url == nil || `as` {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.metalComposition]
-            panel.nameFieldStringValue = "Untitled.mcomp"
+            panel.nameFieldStringValue = loc("Untitled") + ".mcomp"
             guard panel.runModal() == .OK, let chosen = panel.url else { return }
             url = chosen
         }
@@ -210,7 +210,7 @@ private struct LibraryCommands: View {
     @Environment(\.dismissWindow) private var dismissWindow
 
     var body: some View {
-        Button(state.viewerPoppedOut ? "Bring Back Viewer" : "Pop Out Viewer") {
+        Button(loc(state.viewerPoppedOut ? "Bring Back Viewer" : "Pop Out Viewer")) {
             if state.viewerPoppedOut {
                 dismissWindow(id: "viewer")
             } else {
@@ -219,9 +219,9 @@ private struct LibraryCommands: View {
             }
         }
         .keyboardShortcut("v", modifiers: [.command, .option])
-        Button(state.showLibrary ? "Hide Patch Library" : "Show Patch Library") { state.showLibrary.toggle() }
+        Button(loc(state.showLibrary ? "Hide Patch Library" : "Show Patch Library")) { state.showLibrary.toggle() }
             .keyboardShortcut("l", modifiers: [.command, .option])
-        Button(state.showLibrary ? "Close Patch Library" : "Find Patch…") { state.findPatch() }
+        Button(loc(state.showLibrary ? "Close Patch Library" : "Find Patch…")) { state.findPatch() }
             .keyboardShortcut(.return, modifiers: .command)
     }
 }
@@ -231,9 +231,9 @@ private struct UndoCommands: View {
 
     var body: some View {
         let um = composition.undoManager
-        Button(um.canUndo ? "Undo \(um.undoActionName)" : "Undo") { composition.undo() }
+        Button(um.canUndo ? loc("Undo %@", loc(um.undoActionName)) : loc("Undo")) { composition.undo() }
             .keyboardShortcut("z")
-        Button(um.canRedo ? "Redo \(um.redoActionName)" : "Redo") { composition.redo() }
+        Button(um.canRedo ? loc("Redo %@", loc(um.redoActionName)) : loc("Redo")) { composition.redo() }
             .keyboardShortcut("z", modifiers: [.command, .shift])
     }
 }
@@ -273,7 +273,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Picker("Appearance", selection: $appearance) {
-                ForEach(AppAppearance.allCases) { Text($0.title).tag($0) }
+                ForEach(AppAppearance.allCases) { Text(loc($0.title)).tag($0) }
             }
             .pickerStyle(.radioGroup)
         }

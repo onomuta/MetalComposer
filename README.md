@@ -187,6 +187,14 @@ open MetalComposerPlayer.xcodeproj
 - **画像ファイルについて**：iOS では、ファイルアプリで選んだ作品ファイル自体しか読む許可が出ないため、同じフォルダの画像を相対パスで読めないことがあります。iOS で再生する作品は、Image Importer の **Embed in Composition** をオンにしておくのが確実です。
 - **フォント**：iOS に入っていないフォントはシステムフォントで描きます。
 
+## 翻訳（日本語）
+
+Mac 版・iOS 版ともに、OS の言語が日本語なら画面が日本語になります。訳は `Localization/ja.lproj/Localizable.strings`（英語の文言がキー）にまとめてあり、Mac 版は `bundle.sh` が、iOS 版は Xcode プロジェクトが同じファイルを取り込みます。マイクの許可を求める文は `InfoPlist.strings` にあります。
+
+- SwiftUI の `Text("…")` などに直接書いた文字列は、そのままキーとして訳が引かれます。変数に入った文字列は `loc("…")` を通します（`%@`・`%ld` などの書式も使えます）。
+- 文言を追加・変更したら、`Localizable.strings` にも同じキーで訳を足してください。訳がないものは英語のまま表示されます。
+- パッチ名とポート名は、ファイル形式やドキュメントと共通の用語なので、英語のままにしています。
+
 ## パッチの追加方法
 
 `Patch` を継承し、クラスプロパティ（`typeID`・`title`・`category`・`inputSpecs`・`outputSpecs`）を定義します。Provider と Processor では `evaluate`、Consumer では `render` を実装し、最後に `PatchRegistry.all` に登録します。

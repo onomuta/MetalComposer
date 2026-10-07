@@ -25,6 +25,8 @@ APP="build/Mirage Composer.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Translations (Localization/<language>.lproj), shared with the iOS app.
+cp -R Localization/*.lproj "$APP/Contents/Resources/"
 cp "$BINARY" "$APP/Contents/MacOS/MetalComposer"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -62,6 +64,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
       <key>LSItemContentTypes</key><array><string>dev.metalcomposer.composition</string></array>
     </dict>
   </array>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>ja</string></array>
   <key>NSMicrophoneUsageDescription</key><string>Audio Input and Audio Spectrum patches react to sound from the microphone or audio input.</string>
 </dict>
 </plist>

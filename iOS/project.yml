@@ -3,6 +3,7 @@
 name: MetalComposerPlayer
 options:
   bundleIdPrefix: dev.metalcomposer
+  developmentLanguage: en
   deploymentTarget:
     iOS: "17.0"
 packages:
@@ -18,7 +19,8 @@ targets:
   MetalComposerPlayer:
     type: application
     platform: iOS
-    sources: [Player]
+    # Localization holds the translations shared with the Mac app (ja.lproj…).
+    sources: [Player, ../Localization]
     dependencies:
       - package: MetalComposer
         product: MetalComposerKit
@@ -36,6 +38,8 @@ targets:
       path: Player/Info.plist
       properties:
         CFBundleDisplayName: Mirage Composer
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, ja]
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true

@@ -172,10 +172,10 @@ package final class MovieExporter: ObservableObject {
             kCVPixelBufferMetalCompatibilityKey as String: true,
             kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
         ])
-        guard writer.canAdd(input) else { throw ExportError(message: "These settings aren't supported by the encoder.") }
+        guard writer.canAdd(input) else { throw ExportError(message: loc("These settings aren't supported by the encoder.")) }
         writer.add(input)
         guard writer.startWriting() else {
-            throw writer.error ?? ExportError(message: "Couldn't start writing the movie.")
+            throw writer.error ?? ExportError(message: loc("Couldn't start writing the movie."))
         }
         writer.startSession(atSourceTime: .zero)
 
@@ -187,7 +187,7 @@ package final class MovieExporter: ObservableObject {
         let device = resources.device
         var textureCache: CVMetalTextureCache?
         CVMetalTextureCacheCreate(nil, nil, device, nil, &textureCache)
-        guard let textureCache else { abandon(); throw ExportError(message: "Couldn't create a Metal texture cache.") }
+        guard let textureCache else { abandon(); throw ExportError(message: loc("Couldn't create a Metal texture cache.")) }
 
         let depthDesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: RenderResources.depthFormat,
                                                                  width: s.width, height: s.height, mipmapped: false)
@@ -208,7 +208,7 @@ package final class MovieExporter: ObservableObject {
                 if cancelRequested { abandon(); throw CancellationError() }
             }
 
-            guard let pool = adaptor.pixelBufferPool else { abandon(); throw writer.error ?? ExportError(message: "The encoder has no buffers.") }
+            guard let pool = adaptor.pixelBufferPool else { abandon(); throw writer.error ?? ExportError(message: loc("The encoder has no buffers.")) }
             var pixelBuffer: CVPixelBuffer?
             CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
             var cvTexture: CVMetalTexture?
@@ -219,7 +219,7 @@ package final class MovieExporter: ObservableObject {
             guard let pixelBuffer, let cvTexture, let target = CVMetalTextureGetTexture(cvTexture),
                   let commandBuffer = resources.queue.makeCommandBuffer() else {
                 abandon()
-                throw ExportError(message: "Couldn't allocate frame \(frame + 1).")
+                throw ExportError(message: loc("Couldn't allocate frame %ld.", frame + 1))
             }
 
             // Exact time steps, so stateful patches (particles, queues…) behave the same on every export.
@@ -244,7 +244,7 @@ package final class MovieExporter: ObservableObject {
 
             guard adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(s.fps))) else {
                 abandon()
-                throw writer.error ?? ExportError(message: "Couldn't write frame \(frame + 1).")
+                throw writer.error ?? ExportError(message: loc("Couldn't write frame %ld.", frame + 1))
             }
             withExtendedLifetime(cvTexture) {}
             state = .exporting(frame: frame + 1, total: total)
@@ -254,7 +254,7 @@ package final class MovieExporter: ObservableObject {
         await writer.finishWriting()
         guard writer.status == .completed else {
             try? FileManager.default.removeItem(at: url)
-            throw writer.error ?? ExportError(message: "Couldn't finish the movie.")
+            throw writer.error ?? ExportError(message: loc("Couldn't finish the movie."))
         }
     }
 }

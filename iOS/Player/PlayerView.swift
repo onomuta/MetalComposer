@@ -217,7 +217,7 @@ private struct RoundButton: View {
                 .frame(width: 44, height: 44)
                 .background(.ultraThinMaterial, in: Circle())
         }
-        .accessibilityLabel(label)
+        .accessibilityLabel(loc(label))
         .buttonStyle(.plain)
     }
 }

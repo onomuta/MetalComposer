@@ -515,7 +515,7 @@ struct GraphEditorView: View {
                     menuButton("Copy", "doc.on.doc") { composition.copySelection(); close() }
                     menuButton("Group into Macro", "square.stack.3d.up") { composition.groupSelectionIntoMacro(); close() }
                     if let node = composition.singleSelection, node.subgraph != nil {
-                        menuButton("Open \(node.displayTitle)", "arrow.down.right.square") { composition.enter(node); close() }
+                        menuButton(loc("Open %@", node.displayTitle), "arrow.down.right.square") { composition.enter(node); close() }
                         if composition.canExplode(node) {
                             menuButton("Explode Macro", "square.split.2x2") { composition.explodeMacro(node); close() }
                         }
@@ -552,7 +552,7 @@ struct GraphEditorView: View {
     private func menuButton(_ title: String, _ symbol: String, role: ButtonRole? = nil,
                             action: @escaping () -> Void) -> some View {
         Button(role: role, action: action) {
-            Label(title, systemImage: symbol)
+            Label(loc(title), systemImage: symbol)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
@@ -587,7 +587,7 @@ struct GraphEditorView: View {
                         toolbarButton("slider.horizontal.3", "Inspector", action: onInspect)
                     }
                     if let macro {
-                        toolbarButton("arrow.down.right.square", "Open \(macro.displayTitle)") { composition.enter(macro) }
+                        toolbarButton("arrow.down.right.square", loc("Open %@", macro.displayTitle)) { composition.enter(macro) }
                     }
                     toolbarButton("plus.square.on.square", "Duplicate") { composition.duplicateSelection() }
                     toolbarButton("doc.on.doc", "Copy") { composition.copySelection() }
@@ -614,7 +614,7 @@ struct GraphEditorView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .accessibilityLabel(loc(label))
     }
 
     // MARK: Menus & overlays
@@ -824,7 +824,7 @@ struct GraphEditorView: View {
             ctx.fill(Path(roundedRect: frame.offsetBy(dx: 0, dy: 3), cornerRadius: 4), with: .color(.black.opacity(0.3)))
             ctx.fill(shape, with: .color(fill.opacity(0.92)))
             if editingComment != comment.id {
-                let text = comment.text.isEmpty ? Self.emptyCommentHint : comment.text
+                let text = comment.text.isEmpty ? loc(Self.emptyCommentHint) : comment.text
                 ctx.draw(Text(text).font(.system(size: 12)).foregroundColor(.black.opacity(comment.text.isEmpty ? 0.35 : 0.85)),
                          in: frame.insetBy(dx: 9, dy: 8))
             }
