@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Regenerates Assets/AppIcon-1024.png and Assets/AppIcon.icns from Scripts/make-icon.swift.
+# Regenerates Assets/AppIcon-1024.png, Assets/AppIcon.icns and the iOS app icon from Scripts/make-icon.swift.
 set -e
 cd "$(dirname "$0")/.."
 swift Scripts/make-icon.swift Assets/AppIcon-1024.png
@@ -12,3 +12,5 @@ done
 iconutil -c icns "$ICONSET" -o Assets/AppIcon.icns
 rm -rf "$(dirname "$ICONSET")"
 echo "Wrote Assets/AppIcon.icns"
+# iOS: the same artwork as a full, opaque square.
+swift Scripts/make-icon.swift iOS/Player/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png --ios

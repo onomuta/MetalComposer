@@ -7,7 +7,7 @@ package final class CommentPatch: Patch {
     package override class var typeID: String { "comment" }
     package override class var title: String { "Comment" }
     package override class var librarySection: String { "Utility" }
-    package override class var summary: String { "A note on the canvas. Double-click to edit; drag the corner to resize." }
+    package override class var summary: String { "A note on the canvas. Double-click (or double-tap) to edit; drag the corner to resize." }
 
     package static let palette: [(name: String, rgb: SIMD3<Double>)] = [
         ("Yellow", SIMD3(0.98, 0.86, 0.45)), ("Blue", SIMD3(0.55, 0.75, 0.98)),

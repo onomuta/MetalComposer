@@ -1,16 +1,25 @@
 // Renders the Metal Composer app icon (1024×1024 PNG) with CoreGraphics.
-// Usage: swift Scripts/make-icon.swift Assets/AppIcon-1024.png
+// Usage: swift Scripts/make-icon.swift Assets/AppIcon-1024.png [--ios]
+// --ios draws the same artwork across the whole opaque square, without the macOS margin, shadow,
+// rounded corners or rim: iOS masks the corners itself and rejects icons with transparency.
 import AppKit
 import CoreGraphics
 
 let size = 1024
-let out = CommandLine.arguments.dropFirst().first ?? "AppIcon-1024.png"
+let arguments = CommandLine.arguments.dropFirst()
+let ios = arguments.contains("--ios")
+let out = arguments.first { !$0.hasPrefix("--") } ?? "AppIcon-1024.png"
 let space = CGColorSpace(name: CGColorSpace.sRGB)!
 let ctx = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0, space: space,
-                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                    bitmapInfo: (ios ? CGImageAlphaInfo.noneSkipLast : .premultipliedLast).rawValue)!
 // Work top-left origin like a design tool.
 ctx.translateBy(x: 0, y: CGFloat(size))
 ctx.scaleBy(x: 1, y: -1)
+if ios {
+    // The macOS body (100…924) fills the canvas.
+    ctx.scaleBy(x: 1024 / 824, y: 1024 / 824)
+    ctx.translateBy(x: -100, y: -100)
+}
 
 func rgb(_ hex: UInt32, _ a: CGFloat = 1) -> CGColor {
     CGColor(srgbRed: CGFloat((hex >> 16) & 0xff) / 255, green: CGFloat((hex >> 8) & 0xff) / 255,
@@ -22,15 +31,18 @@ func linear(_ colors: [CGColor], _ locations: [CGFloat]? = nil) -> CGGradient {
 
 // macOS icon grid: 824pt body inside the 1024 canvas, continuous-looking corners.
 let body = CGRect(x: 100, y: 100, width: 824, height: 824)
-let bodyPath = CGPath(roundedRect: body, cornerWidth: 186, cornerHeight: 186, transform: nil)
+let bodyPath = ios ? CGPath(rect: body, transform: nil)
+                   : CGPath(roundedRect: body, cornerWidth: 186, cornerHeight: 186, transform: nil)
 
 // Drop shadow.
+if !ios {
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: 18), blur: 36, color: rgb(0x000000, 0.45))
 ctx.addPath(bodyPath)
 ctx.setFillColor(rgb(0x14163A))
 ctx.fillPath()
 ctx.restoreGState()
+}
 
 // Background: deep indigo gradient plus a soft magenta/cyan glow behind the output node.
 ctx.saveGState()
@@ -146,10 +158,12 @@ ctx.addPath(bodyPath)
 ctx.clip()
 ctx.drawLinearGradient(linear([rgb(0xFFFFFF, 0.14), rgb(0xFFFFFF, 0)]), start: CGPoint(x: 512, y: 100), end: CGPoint(x: 512, y: 470), options: [])
 ctx.restoreGState()
-ctx.addPath(CGPath(roundedRect: body.insetBy(dx: 1.5, dy: 1.5), cornerWidth: 185, cornerHeight: 185, transform: nil))
-ctx.setStrokeColor(rgb(0xFFFFFF, 0.16))
-ctx.setLineWidth(3)
-ctx.strokePath()
+if !ios {
+    ctx.addPath(CGPath(roundedRect: body.insetBy(dx: 1.5, dy: 1.5), cornerWidth: 185, cornerHeight: 185, transform: nil))
+    ctx.setStrokeColor(rgb(0xFFFFFF, 0.16))
+    ctx.setLineWidth(3)
+    ctx.strokePath()
+}
 
 let image = ctx.makeImage()!
 let rep = NSBitmapImageRep(cgImage: image)

@@ -120,6 +120,12 @@ struct GraphEditorView: View {
 
     private var graph: Graph { composition.graph }
 
+    #if os(macOS)
+    private static let emptyCommentHint = "Double-click to write a note"
+    #else
+    private static let emptyCommentHint = "Double-tap to write a note"
+    #endif
+
     /// With touch, dragging the background moves around the graph (as in Maps); a range selection
     /// needs ⇧ or ⌘ on a keyboard. The Mac selects a range and pans with ⌥ or two-finger scroll.
     #if os(macOS)
@@ -818,7 +824,7 @@ struct GraphEditorView: View {
             ctx.fill(Path(roundedRect: frame.offsetBy(dx: 0, dy: 3), cornerRadius: 4), with: .color(.black.opacity(0.3)))
             ctx.fill(shape, with: .color(fill.opacity(0.92)))
             if editingComment != comment.id {
-                let text = comment.text.isEmpty ? "Double-click to write a note" : comment.text
+                let text = comment.text.isEmpty ? Self.emptyCommentHint : comment.text
                 ctx.draw(Text(text).font(.system(size: 12)).foregroundColor(.black.opacity(comment.text.isEmpty ? 0.35 : 0.85)),
                          in: frame.insetBy(dx: 9, dy: 8))
             }

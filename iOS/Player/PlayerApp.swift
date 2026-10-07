@@ -105,12 +105,20 @@ final class Library: ObservableObject {
     /// Opens the editor on a file, or on a new composition.
     func edit(_ url: URL?) {
         playing = nil
+        guard canEdit else { return }
         editing = EditingComposition(url: url)
+    }
+
+    /// The editor needs Metal; say so rather than open it without.
+    private var canEdit: Bool {
+        if Engine.shared != nil { return true }
+        error = "This device doesn't support Metal."
+        return false
     }
 
     /// From the player: closes it, then opens what it was playing in the editor.
     func editPlaying() {
-        guard let source = playing?.source else { return }
+        guard let source = playing?.source, canEdit else { return }
         switch source {
         case .demo(let name): editAfterPlaying = EditingComposition(url: nil, demo: name)
         case .file(let url): editAfterPlaying = EditingComposition(url: url)

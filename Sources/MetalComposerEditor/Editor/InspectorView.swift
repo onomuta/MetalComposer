@@ -43,6 +43,12 @@ struct InspectorView: View {
 }
 
 private struct NodeInspector: View {
+    #if os(macOS)
+    static let doubleClick = "double-click"
+    #else
+    static let doubleClick = "double-tap"
+    #endif
+
     @ObservedObject var node: Patch
     @ObservedObject var composition: Composition
     /// The file setting being chosen with the file picker (iOS).
@@ -60,7 +66,7 @@ private struct NodeInspector: View {
                     set: { composition.rename(node, $0) }), prompt: Text(node.title))
                 if node.subgraph != nil {
                     HStack {
-                        Button("Open \(node.displayTitle)  (double-click)") { composition.enter(node) }
+                        Button("Open \(node.displayTitle)  (\(Self.doubleClick))") { composition.enter(node) }
                         if composition.canExplode(node) {
                             Button("Explode") { composition.explodeMacro(node) }.help("Move the contents out of the macro (⇧⌘G)")
                         }

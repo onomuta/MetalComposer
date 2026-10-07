@@ -36,6 +36,7 @@ final class AppState: ObservableObject {
     private var viewerRestart: AnyCancellable?
 
     init() {
+        // Every Mac this runs on has Metal; the iOS app checks before it opens the editor.
         guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is not supported on this device") }
         do {
             let resources = try RenderResources(device: device)

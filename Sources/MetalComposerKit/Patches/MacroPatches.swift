@@ -91,7 +91,7 @@ package class MacroPatch: Patch {
     package override class var typeID: String { "macro" }
     package override class var title: String { "Macro" }
     package override class var librarySection: String { "Macros" }
-    package override class var summary: String { "Groups patches into one. Double-click to open; publish ports with Macro Input/Output." }
+    package override class var summary: String { "Groups patches into one. Double-click (or double-tap) to open; publish ports with Macro Input/Output." }
 
     package let contents = Graph()
     package override var subgraph: Graph? { contents }

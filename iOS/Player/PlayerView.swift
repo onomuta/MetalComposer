@@ -234,7 +234,8 @@ private struct MetalView: UIViewRepresentable {
         view.colorPixelFormat = MetalComposerEngine.pixelFormat
         // The preview is scaled in with a compute kernel, so the drawable can't be framebuffer-only.
         view.framebufferOnly = false
-        view.preferredFramesPerSecond = UIScreen.main.maximumFramesPerSecond
+        // Capped at what the screen can show (60 or 120).
+        view.preferredFramesPerSecond = 120
         view.delegate = context.coordinator
         view.player = playback.player
         view.onTap = onTap
