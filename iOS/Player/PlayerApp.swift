@@ -10,10 +10,13 @@ extension UTType {
 /// GPU state shared by every composition the app plays.
 enum Engine {
     static let shared: MetalComposerEngine? = MTLCreateSystemDefaultDevice().flatMap { try? MetalComposerEngine(device: $0) }
+    /// One queue for every view, so the GPU runs their frames in the order they were drawn.
+    static let queue: MTLCommandQueue? = shared?.device.makeCommandQueue()
 }
 
 @main
 struct PlayerApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var library = Library()
 
     var body: some Scene {
@@ -130,11 +133,18 @@ final class PlayingComposition: Identifiable {
 
 struct HomeView: View {
     @EnvironmentObject private var library: Library
+    @ObservedObject private var external = ExternalDisplay.shared
     @State private var picking = false
 
     var body: some View {
         NavigationStack {
             List {
+                if let size = external.size {
+                    Section {
+                        Label("External display connected (\(Int(size.width))×\(Int(size.height))). Compositions play on it.",
+                              systemImage: "tv")
+                    }
+                }
                 Section("Demos") {
                     ForEach(CompositionPlayer.demoNames, id: \.self) { name in
                         Button { library.play(.demo(name)) } label: {
