@@ -51,6 +51,8 @@ final class Library: ObservableObject {
     @Published var playing: PlayingComposition?
     /// The composition open in the editor (iPad).
     @Published var editing: EditingComposition?
+    /// Opened once the player has gone (two full-screen covers can't change places at once).
+    var editAfterPlaying: EditingComposition?
     @Published var recents: [URL] = []
     @Published var error: String?
 
@@ -74,14 +76,14 @@ final class Library: ObservableObject {
             switch source {
             case .demo(let name):
                 guard let player = CompositionPlayer(engine: engine, demoNamed: name) else { return }
-                playing = PlayingComposition(player: player, title: source.title)
+                playing = PlayingComposition(player: player, source: source)
             case .file(let url):
                 // Files from the picker or another app are only readable while access is held,
                 // and images next to the file are read while playing, so keep it until closed.
                 let scoped = url.startAccessingSecurityScopedResource()
                 do {
                     let player = try CompositionPlayer(engine: engine, contentsOf: url)
-                    playing = PlayingComposition(player: player, title: source.title) {
+                    playing = PlayingComposition(player: player, source: source) {
                         if scoped { url.stopAccessingSecurityScopedResource() }
                     }
                 } catch {
@@ -106,6 +108,23 @@ final class Library: ObservableObject {
         editing = EditingComposition(url: url)
     }
 
+    /// From the player: closes it, then opens what it was playing in the editor.
+    func editPlaying() {
+        guard let source = playing?.source else { return }
+        switch source {
+        case .demo(let name): editAfterPlaying = EditingComposition(url: nil, demo: name)
+        case .file(let url): editAfterPlaying = EditingComposition(url: url)
+        }
+        playing = nil
+    }
+
+    func playerDismissed() {
+        if let next = editAfterPlaying {
+            editAfterPlaying = nil
+            editing = next
+        }
+    }
+
     func forget(_ url: URL) {
         recents.removeAll { $0 == url }
         save()
@@ -124,22 +143,24 @@ final class Library: ObservableObject {
     }
 }
 
-/// A composition open in the editor; nil `url` is a new one.
+/// A composition open in the editor: a file, a copy of a demo, or (neither) a new one.
 struct EditingComposition: Identifiable {
     let id = UUID()
     let url: URL?
+    var demo: String?
 }
 
 /// A composition on screen. `onClose` gives back resources held while it plays.
 final class PlayingComposition: Identifiable {
     let id = UUID()
     let player: CompositionPlayer
-    let title: String
+    let source: Source
+    var title: String { source.title }
     private let onClose: () -> Void
 
-    init(player: CompositionPlayer, title: String, onClose: @escaping () -> Void = {}) {
+    init(player: CompositionPlayer, source: Source, onClose: @escaping () -> Void = {}) {
         self.player = player
-        self.title = title
+        self.source = source
         self.onClose = onClose
     }
 
@@ -200,9 +221,9 @@ struct HomeView: View {
                 Text(library.error ?? "")
             }
         }
-        .fullScreenCover(item: $library.playing) { PlayerView(composition: $0) }
+        .fullScreenCover(item: $library.playing, onDismiss: library.playerDismissed) { PlayerView(composition: $0) }
         .fullScreenCover(item: $library.editing) { editing in
-            EditorScreen(url: editing.url) { saved in
+            EditorScreen(url: editing.url, demoNamed: editing.demo) { saved in
                 library.editing = nil
                 // Renamed or saved elsewhere: the old entry would point at nothing.
                 if let old = editing.url, old != saved { library.forget(old) }

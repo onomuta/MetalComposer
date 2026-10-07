@@ -132,6 +132,7 @@ struct PlayerView: View {
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .background(.ultraThinMaterial, in: Capsule())
                 Spacer()
+                RoundButton("square.and.pencil", label: "Edit") { library.editPlaying() }
                 // Problems show up as patches evaluate (a missing image, a shader error…).
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     let problems = composition.player.problems

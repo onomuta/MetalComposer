@@ -10,13 +10,17 @@ import MetalComposerKit
 /// saves elsewhere, shares it or exports a movie; ‹ closes it. `onClose` gets the file the composition ended up in.
 public struct EditorScreen: View {
     private let url: URL?
+    private let demo: String?
     private let onClose: (URL?) -> Void
     @StateObject private var session = EditorSession()
     @Environment(\.scenePhase) private var scenePhase
     @State private var savingAs = false
 
-    public init(url: URL?, onClose: @escaping (URL?) -> Void) {
+    /// `demoNamed` (one of `CompositionPlayer.demoNames`) starts from a built-in demo instead of a
+    /// file; it is saved as a new composition named after the demo once it is changed.
+    public init(url: URL?, demoNamed demo: String? = nil, onClose: @escaping (URL?) -> Void) {
         self.url = url
+        self.demo = demo
         self.onClose = onClose
     }
 
@@ -47,7 +51,7 @@ public struct EditorScreen: View {
                     if case .success(let url) = result { session.adopt(url) }
                 }
         }
-        .onAppear { session.load(url) }
+        .onAppear { session.load(url, demo: demo) }
         // However the editor is closed: save, give back file access, report the file.
         .onDisappear { onClose(session.close()) }
         // Save before the app may be suspended or closed.
@@ -64,6 +68,8 @@ final class EditorSession: ObservableObject {
     /// A file from outside the app's folder, readable and writable only while access is held.
     private var accessing: URL?
     private var subscriptions: Set<AnyCancellable> = []
+    /// What a new composition is called when it is first saved.
+    private var newName = "Untitled"
 
     private var composition: Composition { state.composition }
 
@@ -75,12 +81,15 @@ final class EditorSession: ObservableObject {
             .store(in: &subscriptions)
     }
 
-    var title: String { composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Untitled" }
+    var title: String { composition.fileURL?.deletingPathExtension().lastPathComponent ?? newName }
 
-    func load(_ url: URL?) {
+    func load(_ url: URL?, demo: String? = nil) {
         if let url {
             access(url)
             state.open(url)
+        } else if let demo = demo.flatMap(Demo.init(rawValue:)) {
+            state.loadDemo(demo)
+            newName = demo.rawValue
         } else {
             state.newComposition()
         }
@@ -93,7 +102,7 @@ final class EditorSession: ObservableObject {
     /// Writes the composition if it changed since the last save; a new one goes to Documents.
     func save() {
         guard let data = currentData(), data != savedData else { return }
-        guard let url = composition.fileURL ?? Self.unusedURL(named: "Untitled") else { return }
+        guard let url = composition.fileURL ?? Self.unusedURL(named: newName) else { return }
         if state.write(to: url) { savedData = data }
     }
 
