@@ -62,6 +62,8 @@ enum NodeLayout {
 
 struct GraphEditorView: View {
     @ObservedObject var composition: Composition
+    /// Opens the inspector where it isn't always on screen (the phone layout's sheet).
+    var onInspect: (() -> Void)?
 
     @State private var offset = CGSize(width: 30, height: 30)
     @State private var zoom: CGFloat = 1
@@ -192,6 +194,7 @@ struct GraphEditorView: View {
             .overlay(alignment: .topLeading) { portTooltip }
             .overlay(alignment: .topLeading) { breadcrumb }
             .overlay(alignment: .bottomTrailing) { zoomControls }
+            .overlay(alignment: .topLeading) { selectionToolbar }
             .onAppear { viewSize = geo.size; zoomToFit(); installScrollMonitor() }
             .onDisappear { removeScrollMonitor() }
             .onChange(of: geo.size) { _, s in viewSize = s; updateVisibleCenter() }
@@ -539,6 +542,61 @@ struct GraphEditorView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(role == .destructive ? Color.red : Color.primary)
+    }
+
+    // MARK: Selection toolbar (touch)
+
+    /// Buttons for the selected patches, just above them (below when there's no room), so the
+    /// common actions are a tap away instead of in the long-press menu. iOS only.
+    @ViewBuilder private var selectionToolbar: some View {
+        #if !os(macOS)
+        let nodes = composition.selectedNodes
+        if !nodes.isEmpty, drag == nil, touchMenu == nil, editingComment == nil {
+            let bounds = nodes.map(NodeLayout.frame).reduce(CGRect.null) { $0.union($1) }
+            let screen = CGRect(x: bounds.minX * zoom + offset.width, y: bounds.minY * zoom + offset.height,
+                                width: bounds.width * zoom, height: bounds.height * zoom)
+            let macro = composition.singleSelection.flatMap { $0.subgraph != nil ? $0 : nil }
+            let buttonCount = 3 + (onInspect == nil ? 0 : 1) + (macro == nil ? 0 : 1)
+            let size = CGSize(width: CGFloat(buttonCount) * 44 + 12, height: 44)
+            // Above the selection if it fits, otherwise below it; always inside the view.
+            let above = screen.minY - 10 - size.height / 2
+            let y = above > size.height / 2 + 4 ? above : min(screen.maxY + 10 + size.height / 2, viewSize.height - size.height / 2 - 4)
+            let x = min(max(screen.midX, size.width / 2 + 8), viewSize.width - size.width / 2 - 8)
+            // Only while the selection is on screen.
+            if screen.intersects(CGRect(origin: .zero, size: viewSize)) {
+                HStack(spacing: 0) {
+                    if let onInspect {
+                        toolbarButton("slider.horizontal.3", "Inspector", action: onInspect)
+                    }
+                    if let macro {
+                        toolbarButton("arrow.down.right.square", "Open \(macro.displayTitle)") { composition.enter(macro) }
+                    }
+                    toolbarButton("plus.square.on.square", "Duplicate") { composition.duplicateSelection() }
+                    toolbarButton("doc.on.doc", "Copy") { composition.copySelection() }
+                    toolbarButton("trash", "Delete", tint: .red) { composition.deleteSelection() }
+                }
+                .padding(.horizontal, 6)
+                .frame(height: size.height)
+                .background(.regularMaterial, in: Capsule())
+                .shadow(color: .black.opacity(0.3), radius: 6, y: 2)
+                .position(x: x, y: y)
+                .transition(.opacity)
+            }
+        }
+        #endif
+    }
+
+    private func toolbarButton(_ symbol: String, _ label: String, tint: Color = .primary,
+                               action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(tint)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     // MARK: Menus & overlays

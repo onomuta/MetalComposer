@@ -230,7 +230,9 @@ struct ContentView: View {
 
     /// The graph editor with the library floating over its top-left corner.
     private func editorWithFloatingLibrary(libraryWidth: CGFloat, libraryHeight: CGFloat) -> some View {
-        GraphEditorView(composition: composition)
+        // The phone layout keeps the inspector in a sheet; its selection toolbar can open it.
+        GraphEditorView(composition: composition,
+                        onInspect: layout == .phone ? { showInspectorSheet = true } : nil)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .overlay(alignment: .topLeading) {
                 if showFloatingLibrary {
