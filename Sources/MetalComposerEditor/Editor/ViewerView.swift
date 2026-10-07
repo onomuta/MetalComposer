@@ -56,6 +56,16 @@ enum ViewerAspect: String, CaseIterable, Identifiable {
     }
 }
 
+/// How the viewer sits in the phone layout.
+enum PhoneViewerMode: String {
+    /// Above the editor (beside it in landscape).
+    case expanded
+    /// A thin bar with the controls and a small live preview.
+    case collapsed
+    /// The editor fills the screen; the viewer floats in a corner.
+    case floating
+}
+
 struct ViewerPanel: View {
     let renderer: Renderer
     @ObservedObject var playback: Playback
@@ -63,51 +73,106 @@ struct ViewerPanel: View {
     var isPoppedOut = false
     /// Moves the viewer to or from its own window; nil where there is only one window (iOS).
     var onTogglePopOut: (() -> Void)?
+    /// The phone layout's viewer mode, switched from the viewer's bar; nil elsewhere.
+    var phoneMode: Binding<PhoneViewerMode>?
     /// Shared by the docked and popped-out viewer, and remembered between launches.
     @AppStorage("viewerAspect") private var aspectName = ViewerAspect.free.rawValue
 
     private var aspect: ViewerAspect { ViewerAspect(rawValue: aspectName) ?? .free }
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Button { playback.isPlaying.toggle() } label: {
-                    Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
-                }
-                .keyboardShortcut("p", modifiers: [.command, .option])
-                .help("Play / Pause (⌥⌘P)")
-                Button { playback.restart() } label: { Image(systemName: "backward.end.fill") }
-                    .help("Restart time")
-                TimelineView(.periodic(from: .now, by: 0.1)) { _ in
-                    Text(String(format: "%.1f s", playback.time)).monospacedDigit().foregroundStyle(.secondary)
-                }
-                Spacer()
-                Picker(selection: $aspectName) {
-                    ForEach(ViewerAspect.allCases) { Text($0.rawValue).tag($0.rawValue) }
-                } label: {
-                    Image(systemName: "aspectratio")
-                }
-                .pickerStyle(.menu)
-                .fixedSize()
-                .help("Preview aspect ratio")
-                if let onTogglePopOut {
-                    Button(action: onTogglePopOut) {
-                        Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
+        if phoneMode?.wrappedValue == .collapsed {
+            collapsedBar
+        } else {
+            VStack(spacing: 0) {
+                HStack(spacing: 10) {
+                    transportControls
+                    Spacer()
+                    Picker(selection: $aspectName) {
+                        ForEach(ViewerAspect.allCases) { Text($0.rawValue).tag($0.rawValue) }
+                    } label: {
+                        Image(systemName: "aspectratio")
                     }
-                    .help(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)")
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                    .help("Preview aspect ratio")
+                    if let onTogglePopOut {
+                        Button(action: onTogglePopOut) {
+                            Image(systemName: isPoppedOut ? "arrow.down.left.square" : "arrow.up.right.square")
+                        }
+                        .help(isPoppedOut ? "Put the viewer back in the main window (⌥⌘V)" : "Open the viewer in its own window (⌥⌘V)")
+                    }
+                    phoneModeButtons
                 }
+                .buttonStyle(.borderless)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+                .gesture(phoneSwipe)
+                GeometryReader { geo in
+                    let size = aspect.fitted(in: geo.size)
+                    // Same view in every mode (only its frame changes), so switching never recreates it.
+                    MetalViewer(renderer: renderer)
+                        .frame(width: size.width, height: size.height)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+                .background(Color(white: 0.06))
             }
-            .buttonStyle(.borderless)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            GeometryReader { geo in
-                let size = aspect.fitted(in: geo.size)
-                // Same view in every mode (only its frame changes), so switching never recreates it.
-                MetalViewer(renderer: renderer)
-                    .frame(width: size.width, height: size.height)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var transportControls: some View {
+        Group {
+            Button { playback.isPlaying.toggle() } label: {
+                Image(systemName: playback.isPlaying ? "pause.fill" : "play.fill")
             }
-            .background(Color(white: 0.06))
+            .keyboardShortcut("p", modifiers: [.command, .option])
+            .help("Play / Pause (⌥⌘P)")
+            Button { playback.restart() } label: { Image(systemName: "backward.end.fill") }
+                .help("Restart time")
+            TimelineView(.periodic(from: .now, by: 0.1)) { _ in
+                Text(String(format: "%.1f s", playback.time)).monospacedDigit().foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The controls and a small live preview: the composition keeps rendering, so time and
+    /// stateful patches go on as before.
+    private var collapsedBar: some View {
+        HStack(spacing: 10) {
+            transportControls
+            Spacer()
+            MetalViewer(renderer: renderer)
+                .frame(width: 64, height: 36)
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+            phoneModeButtons
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .gesture(phoneSwipe)
+    }
+
+    @ViewBuilder private var phoneModeButtons: some View {
+        if let phoneMode {
+            let collapsed = phoneMode.wrappedValue == .collapsed
+            Button { withAnimation { phoneMode.wrappedValue = collapsed ? .expanded : .collapsed } } label: {
+                Image(systemName: collapsed ? "chevron.down" : "chevron.up")
+            }
+            .accessibilityLabel(collapsed ? "Expand Viewer" : "Collapse Viewer")
+            Button { withAnimation { phoneMode.wrappedValue = .floating } } label: {
+                Image(systemName: "pip.enter")
+            }
+            .accessibilityLabel("Float Viewer")
+        }
+    }
+
+    /// Phone: swipe the bar up to collapse the viewer, down to expand it.
+    private var phoneSwipe: some Gesture {
+        DragGesture(minimumDistance: 15).onEnded { value in
+            guard let phoneMode, abs(value.translation.height) > abs(value.translation.width) else { return }
+            withAnimation { phoneMode.wrappedValue = value.translation.height < 0 ? .collapsed : .expanded }
         }
     }
 }

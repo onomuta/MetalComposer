@@ -160,6 +160,11 @@ struct ContentView: View {
     @State private var showFloatingLibrary = false
     /// The inspector sheet in the phone layout.
     @State private var showInspectorSheet = false
+    /// How the viewer sits in the phone layout, and which corner it floats in (remembered).
+    @AppStorage("phoneViewerMode") private var phoneViewerMode = PhoneViewerMode.expanded
+    @AppStorage("floatingViewerCorner") private var floatingCorner = FloatingCorner.topTrailing
+    /// How far the floating viewer has been dragged from its corner.
+    @State private var floatingDrag: CGSize = .zero
 
     enum Layout {
         /// Library, editor, viewer over inspector: the Mac and landscape iPad.
@@ -262,23 +267,39 @@ struct ContentView: View {
         }
     }
 
-    /// Phone: the viewer above the editor (beside it in landscape); the inspector is a sheet that
-    /// can stay open at half height while the editor is used, following the selection.
+    /// Phone: the viewer above the editor (beside it in landscape), collapsed to a bar, or
+    /// floating over the editor; the inspector is a sheet that can stay open at half height while
+    /// the editor is used, following the selection.
     private func phoneLayout(_ size: CGSize) -> some View {
-        let viewer = ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer)
+        let viewer = ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer,
+                                 phoneMode: $phoneViewerMode)
+        let landscape = size.width > size.height
+        let libraryWidth = min(landscape ? 300 : 320, size.width - 40)
         return Group {
-            if size.width > size.height {
+            switch phoneViewerMode {
+            case .floating:
+                editorWithFloatingLibrary(libraryWidth: libraryWidth, libraryHeight: size.height * 0.6)
+                    // Positioned by offset from the top-left rather than by alignment, so moving
+                    // between corners animates as one view.
+                    .overlay(alignment: .topLeading) { floatingViewer(in: size) }
+            case .collapsed:
+                VStack(spacing: 0) {
+                    viewer
+                    Rectangle().fill(Color.separatorLine).frame(height: 1)
+                    editorWithFloatingLibrary(libraryWidth: libraryWidth, libraryHeight: size.height * 0.6)
+                }
+            case .expanded where landscape:
                 HStack(spacing: 0) {
                     editorWithFloatingLibrary(libraryWidth: min(300, size.width * 0.6 - 40), libraryHeight: size.height - 40)
                     Rectangle().fill(Color.separatorLine).frame(width: 1)
                     viewer.frame(width: size.width * 0.4)
                 }
-            } else {
+            case .expanded:
                 VStack(spacing: 0) {
                     // A 16:9 picture plus the viewer's control bar, but never most of the screen.
                     viewer.frame(height: min(size.width * 9 / 16 + 36, size.height * 0.4))
                     Rectangle().fill(Color.separatorLine).frame(height: 1)
-                    editorWithFloatingLibrary(libraryWidth: min(320, size.width - 40), libraryHeight: size.height * 0.5)
+                    editorWithFloatingLibrary(libraryWidth: libraryWidth, libraryHeight: size.height * 0.5)
                 }
             }
         }
@@ -288,6 +309,54 @@ struct ContentView: View {
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationDragIndicator(.visible)
         }
+    }
+
+    /// The viewer as a small window over the editor. Drag its bar to move it; it settles in the
+    /// nearest corner. Touches on the picture still reach the composition (Mouse patches).
+    private func floatingViewer(in size: CGSize) -> some View {
+        let width = min(size.width * (size.width > size.height ? 0.32 : 0.5), 260)
+        let ratio = ViewerAspect(rawValue: UserDefaults.standard.string(forKey: "viewerAspect") ?? "")?.ratio ?? 16 / 9
+        let pictureHeight = width / ratio
+        let barHeight: CGFloat = 32
+        let margin: CGFloat = 12
+        let windowSize = CGSize(width: width, height: pictureHeight + barHeight)
+        let center = floatingCorner.center(windowSize: windowSize, in: size, margin: margin)
+        return VStack(spacing: 0) {
+            HStack(spacing: 14) {
+                Image(systemName: "line.3.horizontal").foregroundStyle(.secondary)
+                Spacer()
+                Button { state.playback.isPlaying.toggle() } label: {
+                    Image(systemName: state.playback.isPlaying ? "pause.fill" : "play.fill")
+                }
+                Button { withAnimation { phoneViewerMode = .expanded } } label: { Image(systemName: "pip.exit") }
+                    .accessibilityLabel("Dock Viewer")
+            }
+            .font(.footnote)
+            .buttonStyle(.borderless)
+            .padding(.horizontal, 10)
+            .frame(height: barHeight)
+            .background(.regularMaterial)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(coordinateSpace: .global)
+                    .onChanged { floatingDrag = $0.translation }
+                    .onEnded { value in
+                        // Where the window's center ended up, then the corner on that side.
+                        let end = CGPoint(x: center.x + value.translation.width, y: center.y + value.translation.height)
+                        withAnimation(.spring(duration: 0.3)) {
+                            floatingCorner = FloatingCorner(leading: end.x < size.width / 2, top: end.y < size.height / 2)
+                            floatingDrag = .zero
+                        }
+                    }
+            )
+            MetalViewer(renderer: state.renderer)
+                .frame(width: width, height: pictureHeight)
+        }
+        .frame(width: width)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(radius: 10)
+        .offset(x: center.x - windowSize.width / 2 + floatingDrag.width,
+                y: center.y - windowSize.height / 2 + floatingDrag.height)
     }
 
     /// Library, editor, then the viewer above the inspector (the Mac, and iPad in landscape).
@@ -430,5 +499,27 @@ struct AppAlert: Identifiable {
     /// Like NSAlert(error:): the description as the title, the recovery suggestion below.
     init(_ error: Error) {
         self.init(title: error.localizedDescription, message: (error as NSError).localizedRecoverySuggestion ?? "")
+    }
+}
+
+/// The corner the phone layout's floating viewer sits in.
+enum FloatingCorner: String {
+    case topLeading, topTrailing, bottomLeading, bottomTrailing
+
+    init(leading: Bool, top: Bool) {
+        switch (leading, top) {
+        case (true, true): self = .topLeading
+        case (false, true): self = .topTrailing
+        case (true, false): self = .bottomLeading
+        case (false, false): self = .bottomTrailing
+        }
+    }
+
+    /// The center of a window of `windowSize` resting in this corner of `area`.
+    func center(windowSize: CGSize, in area: CGSize, margin: CGFloat) -> CGPoint {
+        let leading = self == .topLeading || self == .bottomLeading
+        let top = self == .topLeading || self == .topTrailing
+        return CGPoint(x: leading ? margin + windowSize.width / 2 : area.width - margin - windowSize.width / 2,
+                       y: top ? margin + windowSize.height / 2 : area.height - margin - windowSize.height / 2)
     }
 }
