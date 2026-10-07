@@ -30,7 +30,7 @@ package enum Demo: String, CaseIterable, Identifiable {
         let particles = g.put(ParticleSystemPatch.self, 640, 520)
 
         let hueLFO = g.put(LFOPatch.self, 40, 40, ["type": .number(4), "period": .number(10), "amplitude": .number(0.5), "offset": .number(0.5)])
-        let text = g.put(TextImagePatch.self, 40, 190, ["text": .string("Metal Composer"), "size": .number(120)])
+        let text = g.put(TextImagePatch.self, 40, 190, ["text": .string("Mirage Composer"), "size": .number(120)])
         let bob = g.put(LFOPatch.self, 40, 300, ["period": .number(4), "amplitude": .number(0.06), "offset": .number(0)])
         let wobble = g.put(MathExpressionPatch.self, 40, 450, ["expression": .string("sin(t * 1.3) * 3 + a")])
         let mouse = g.put(MousePatch.self, 40, 590)

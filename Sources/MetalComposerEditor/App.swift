@@ -102,7 +102,7 @@ final class AppState: ObservableObject {
     /// Renders the composition to a movie in the temporary folder; the sheet then offers to share it.
     func exportMovie() {
         let codec = exporter.settings.codec
-        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer"
+        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Mirage Composer"
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name).\(codec.fileExtension)")
         try? FileManager.default.removeItem(at: url)
         exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
@@ -133,7 +133,7 @@ final class AppState: ObservableObject {
             playback.restart()
             if !unknown.isEmpty {
                 show(AppAlert(title: "Some patches couldn't be loaded",
-                              message: "This composition uses patches this version of Metal Composer doesn't know: "
+                              message: "This composition uses patches this version of Mirage Composer doesn't know: "
                                 + unknown.joined(separator: ", ")
                                 + ". They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them."))
             }
@@ -212,7 +212,7 @@ struct ContentView: View {
             }
         }
         #if os(macOS)
-        .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer")
+        .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Mirage Composer")
         #endif
         .alert(item: $state.alert) { alert in
             Alert(title: Text(alert.title), message: Text(alert.message))

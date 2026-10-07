@@ -27,7 +27,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.metalcomposer.player
-        PRODUCT_NAME: Metal Composer Player
+        PRODUCT_NAME: Mirage Composer
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         GENERATE_INFOPLIST_FILE: NO
@@ -35,7 +35,7 @@ targets:
     info:
       path: Player/Info.plist
       properties:
-        CFBundleDisplayName: MC Player
+        CFBundleDisplayName: Mirage Composer
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -52,16 +52,16 @@ targets:
         ITSAppUsesNonExemptEncryption: false
         NSMicrophoneUsageDescription: Audio patches in a composition react to sound from the microphone.
         LSSupportsOpeningDocumentsInPlace: true
-        # Compositions saved by the editor appear in the Files app (On My iPad › MC Player).
+        # Compositions saved by the editor appear in the Files app (On My iPad › Mirage Composer).
         UIFileSharingEnabled: true
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: dev.metalcomposer.composition
-            UTTypeDescription: Metal Composer Composition
+            UTTypeDescription: Mirage Composer Composition
             UTTypeConformsTo: [public.json]
             UTTypeTagSpecification:
               public.filename-extension: [mcomp]
         CFBundleDocumentTypes:
-          - CFBundleTypeName: Metal Composer Composition
+          - CFBundleTypeName: Mirage Composer Composition
             CFBundleTypeRole: Viewer
             LSHandlerRank: Default
             LSItemContentTypes: [dev.metalcomposer.composition]

@@ -1,15 +1,15 @@
-# Metal Composer
+# Mirage Composer
 
 Quartz Composer をモダンに作り直すことを目指した、macOS 向けのノードベース・リアルタイムビジュアル環境です。SwiftUI と Metal で書いています。
 
-> **注記**：Apple Inc. とは関係のない、個人による非公式のプロジェクトです。Metal、Quartz Composer、macOS は Apple Inc. の商標です。
+> **注記**：旧名は Metal Composer です。Apple Inc. とは関係のない、個人による非公式のプロジェクトです。Metal、Quartz Composer、macOS は Apple Inc. の商標です。
 
 ## ビルドと起動
 
 ```bash
 swift run                      # 開発用にそのまま起動
 swift test                     # テスト（保存と読み込み、マクロ化、ペースト、数式）
-./Scripts/bundle.sh            # build/Metal Composer.app を作成（release）
+./Scripts/bundle.sh            # build/Mirage Composer.app を作成（release）
 ./Scripts/make-icon.sh         # アプリアイコンを再生成（Scripts/make-icon.swift → Assets/AppIcon.icns）
 ```
 
@@ -59,7 +59,7 @@ VERSION=0.1.0 UNIVERSAL=1 SIGN_IDENTITY="Developer ID Application: Takao Onomura
 
 ## 設定
 
-- **外観**：Metal Composer › Settings…（⌘,）で、ライト／ダーク／システムの設定に従う、を選べます。グラフのキャンバスは、どれを選んでも暗い色のままです。
+- **外観**：Mirage Composer › Settings…（⌘,）で、ライト／ダーク／システムの設定に従う、を選べます。グラフのキャンバスは、どれを選んでも暗い色のままです。
 
 ## 時間の扱い（Time Base）
 
@@ -162,15 +162,15 @@ player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer,
 - **Text Image のフォント**：**Font** でファミリー（System Font、System Monospaced、Mac に入っているフォント）を、**Weight** でそのファミリーのスタイル（Thin、Light、Bold、Italic など）を選びます。Weight の一覧は選んだフォントが持つスタイルで、細い順に並びます。フォントを替えたときに同じ名前のスタイルがなければ、一番近い太さのスタイルに切り替わります。フォントは名前で保存されるので、作品を開く Mac にも同じフォントが入っている必要があります。入っていなければシステムフォントで描き、その旨を表示します（組み込み先では `problems` に出ます）。0.8 以前の作品は、開いたときに新しい形式に置き換わります。
 - **Text Image の文字間隔**：**Spacing** で、Proportional（フォントどおり）、Monospaced Digits（数字だけ同じ幅。カウンターや時計の数字が変わっても揺れません）、Monospaced（すべての文字を同じ幅のマスに置きます。Random String の文字が変わっても画像の幅が変わりません）を選べます。どのフォントでも使えます。Monospaced のマスは一番幅の広い文字（W など）に合わせるので、等幅フォントより字間が広く見えます。詰めたいときは等幅フォント（Font の System Monospaced など）を選んでください。
 - **画像の埋め込み**：Image Importer の **Embed in Composition** をオンにすると、画像ファイルの中身を作品に保存します。元のファイルがなくても、作品 1 つで持ち運べます。読み込みはファイルより 2〜3 倍遅く、作品も画像より 3 割ほど大きくなるので、ロゴやテクスチャなど数 MB までの画像に向いています（10MB を超えるとインスペクタに注意が出ます）。埋め込み後に元のファイルを変えても作品には反映されないので、反映するにはファイルを選び直します。0.4.1 以前の版で開くと、埋め込んだ画像は使われず、ファイルから読みます。
-- **問題の確認**：画像が見つからない、シェーダのエラーなどは `problems` で取得できます。新しい Metal Composer で追加されたパッチなど、このエンジンが知らないパッチは読み飛ばし（つながりも外れます）、その種類を `problems` に含めます。エディタで開いたときは警告を出します。
+- **問題の確認**：画像が見つからない、シェーダのエラーなどは `problems` で取得できます。新しい Mirage Composer で追加されたパッチなど、このエンジンが知らないパッチは読み飛ばし（つながりも外れます）、その種類を `problems` に含めます。エディタで開いたときは警告を出します。
 - **Mouse パッチ**：`player.pointer`（作品の座標。x は −1〜1、y は上向きで x と同じ縮尺）と `player.isPointerDown` で渡します。渡さなければ、位置は常に中央です。
 - **デモ**：`CompositionPlayer.demoNames` と `CompositionPlayer(engine:demoNamed:)` で、エディタの File › Demos と同じ作品を再生できます。
 - **iOS**：エンジンは iOS 17 以降でも動きます。マイクを使う作品があるなら、Info.plist に `NSMicrophoneUsageDescription` が必要です。
 - **ファイル形式**：エンジンより新しい形式の作品を読もうとすると、読み込みの段階でエラーになります（`CompositionPlayer.supportedFormatVersion`）。
 
-## iOS 再生アプリ（MC Player）
+## iOS 版（Mirage Composer）
 
-`iOS/` に、`.mcomp` を iPhone／iPad で再生するだけのアプリがあります（編集はできません）。Xcode プロジェクトは [XcodeGen](https://github.com/yonaskolb/XcodeGen) で作ります。
+`iOS/` に、iPhone／iPad 版があります。`.mcomp` の再生と、Mac と同じエディタでの編集ができます。Xcode プロジェクトは [XcodeGen](https://github.com/yonaskolb/XcodeGen) で作ります。
 
 ```bash
 brew install xcodegen
@@ -183,7 +183,7 @@ open MetalComposerPlayer.xcodeproj
 - **外部ディスプレイ**：HDMI アダプタや AirPlay（Apple TV への画面ミラーリング）で外部ディスプレイをつなぐと、作品はそちらに、その解像度とリフレッシュレートで全画面表示されます。iPhone／iPad 側には同じ縦横比のプレビューと操作ボタンが出て、プレビューに触れた位置が Mouse パッチに入ります。描画は外部ディスプレイ側の 1 回だけなので、時間やパーティクルが二重に進むことはありません。何も再生していないときは黒を出します。シミュレータでは I/O › External Displays で試せます。
 - パラメータ（作品のトップの Macro Input）は、数値・真偽値・色・文字列を変えられます。Macro Input には範囲の情報がないので、スライダーの範囲は既定値から推測しています（0〜1 か、既定値の ±2 倍）。
 - **エディタ**：ホーム画面の「＋」で新規作成、Recent の項目を長押しか右スワイプして「Edit」で編集します。再生中の画面の編集ボタンからも、その作品をエディタで開けます（デモは、変更すると同じ名前の新しい作品として保存されます）。Mac と同じエディタで、何もない所の長押しでパッチの追加、パッチの長押しで複製・削除など、ポートの長押しで今の値を表示します。パッチを選ぶと、そのすぐ上に小さなツールバー（インスペクタ〈iPhone〉・マクロを開く・複製・コピー・削除）が出ます。縦向きでは、エディタが上、Viewer とインスペクタが下に並び、ライブラリはエディタの上に重なって出ます。iPhone（と iPad の Slide Over のような狭い画面）では、Viewer が上（横向きでは右）、エディタが下に並び、インスペクタは右上のボタンで下から出るシートになります。シートを半分の高さまでにしておけば、出したままエディタを操作でき、選んだパッチに追従します。iPhone の Viewer は、バーのボタンで「折りたたむ」（再生ボタンと小さなプレビューだけの細い帯。バーを上下にスワイプしても切り替わります）と「小窓」（エディタを全画面にして Viewer を隅に浮かべる。上のバーをドラッグすると近い隅に吸い付きます）に切り替えられます。
-- **ファイル**：変更は約 2 秒後に自動で保存されます（新規の作品は、何か変更した時点でファイルアプリの「この iPad 内（iPhone 内） › MC Player」に作られます）。タイトルをタップすると、名前の変更・複製・別の場所に保存（iCloud Drive など）・共有ができます。左上の ‹ で閉じます。
+- **ファイル**：変更は約 2 秒後に自動で保存されます（新規の作品は、何か変更した時点でファイルアプリの「この iPad 内（iPhone 内） › Mirage Composer」に作られます）。タイトルをタップすると、名前の変更・複製・別の場所に保存（iCloud Drive など）・共有ができます。左上の ‹ で閉じます。
 - **画像ファイルについて**：iOS では、ファイルアプリで選んだ作品ファイル自体しか読む許可が出ないため、同じフォルダの画像を相対パスで読めないことがあります。iOS で再生する作品は、Image Importer の **Embed in Composition** をオンにしておくのが確実です。
 - **フォント**：iOS に入っていないフォントはシステムフォントで描きます。
 

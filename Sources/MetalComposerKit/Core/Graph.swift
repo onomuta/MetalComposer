@@ -29,7 +29,7 @@ package struct GraphRecord: Codable {
     package var nodes: [NodeRecord]
     package var connections: [Connection]
 
-    /// Patch types this build doesn't know (saved by a newer Metal Composer), including inside
+    /// Patch types this build doesn't know (saved by a newer Mirage Composer), including inside
     /// macros, without duplicates and in the order they appear. Loading skips these patches.
     package var unknownPatchTypes: [String] {
         var seen = Set<String>()

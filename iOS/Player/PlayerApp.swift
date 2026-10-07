@@ -215,7 +215,7 @@ struct HomeView: View {
                     }
                 }
             }
-            .navigationTitle("Metal Composer")
+            .navigationTitle("Mirage Composer")
             .toolbar {
                 Button { library.edit(nil) } label: { Label("New Composition", systemImage: "plus") }
                 Button { picking = true } label: { Label("Open", systemImage: "folder") }

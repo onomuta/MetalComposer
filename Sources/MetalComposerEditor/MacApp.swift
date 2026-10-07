@@ -23,7 +23,7 @@ extension AppState {
         let codec = exporter.settings.codec
         let panel = NSSavePanel()
         panel.allowedContentTypes = [codec.fileType == .mp4 ? .mpeg4Movie : .quickTimeMovie]
-        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Metal Composer"
+        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Mirage Composer"
         panel.nameFieldStringValue = "\(name).\(codec.fileExtension)"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
@@ -93,7 +93,7 @@ public struct MetalComposerApp: App {
     public init() {}
 
     public var body: some Scene {
-        Window("Metal Composer", id: "main") {
+        Window("Mirage Composer", id: "main") {
             ContentView(state: state, composition: state.composition)
                 .frame(minWidth: 1100, minHeight: 680)
                 .onAppear { [state] in delegate.openHandler = { state.open($0) } }

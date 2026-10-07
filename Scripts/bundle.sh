@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds Metal Composer and wraps it in a double-clickable .app bundle.
+# Builds Mirage Composer and wraps it in a double-clickable .app bundle.
 #   ./Scripts/bundle.sh [debug|release]
 # Environment:
 #   VERSION=0.1.0   version shown in Finder / About (default: 0.1.0-dev)
@@ -21,7 +21,7 @@ else
   BINARY=".build/$CONFIG/MetalComposer"
 fi
 
-APP="build/Metal Composer.app"
+APP="build/Mirage Composer.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
@@ -31,8 +31,8 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>Metal Composer</string>
-  <key>CFBundleDisplayName</key><string>Metal Composer</string>
+  <key>CFBundleName</key><string>Mirage Composer</string>
+  <key>CFBundleDisplayName</key><string>Mirage Composer</string>
   <key>CFBundleIdentifier</key><string>dev.metalcomposer.app</string>
   <key>CFBundleExecutable</key><string>MetalComposer</string>
   <key>CFBundlePackageType</key><string>APPL</string>
@@ -46,7 +46,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <array>
     <dict>
       <key>UTTypeIdentifier</key><string>dev.metalcomposer.composition</string>
-      <key>UTTypeDescription</key><string>Metal Composer Composition</string>
+      <key>UTTypeDescription</key><string>Mirage Composer Composition</string>
       <key>UTTypeConformsTo</key><array><string>public.json</string></array>
       <key>UTTypeIconFile</key><string>AppIcon</string>
       <key>UTTypeTagSpecification</key>
@@ -56,7 +56,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDocumentTypes</key>
   <array>
     <dict>
-      <key>CFBundleTypeName</key><string>Metal Composer Composition</string>
+      <key>CFBundleTypeName</key><string>Mirage Composer Composition</string>
       <key>CFBundleTypeRole</key><string>Editor</string>
       <key>LSHandlerRank</key><string>Owner</string>
       <key>LSItemContentTypes</key><array><string>dev.metalcomposer.composition</string></array>

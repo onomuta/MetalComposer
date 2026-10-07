@@ -1,4 +1,4 @@
-// Renders the Metal Composer app icon (1024×1024 PNG) with CoreGraphics.
+// Renders the Mirage Composer app icon (1024×1024 PNG) with CoreGraphics.
 // Usage: swift Scripts/make-icon.swift Assets/AppIcon-1024.png [--ios]
 // --ios draws the same artwork across the whole opaque square, without the macOS margin, shadow,
 // rounded corners or rim: iOS masks the corners itself and rejects icons with transparency.
