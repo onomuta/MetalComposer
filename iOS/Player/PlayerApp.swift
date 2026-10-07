@@ -150,8 +150,6 @@ struct HomeView: View {
     @EnvironmentObject private var library: Library
     @ObservedObject private var external = ExternalDisplay.shared
     @State private var picking = false
-    /// The editor needs a large screen; iPhone only plays.
-    private let canEdit = UIDevice.current.userInterfaceIdiom == .pad
 
     var body: some View {
         NavigationStack {
@@ -177,15 +175,11 @@ struct HomeView: View {
                             }
                             .contextMenu {
                                 Button { library.play(.file(url)) } label: { Label("Play", systemImage: "play") }
-                                if canEdit {
-                                    Button { library.edit(url) } label: { Label("Edit", systemImage: "square.and.pencil") }
-                                }
+                                Button { library.edit(url) } label: { Label("Edit", systemImage: "square.and.pencil") }
                             }
                             .swipeActions(edge: .leading) {
-                                if canEdit {
-                                    Button { library.edit(url) } label: { Label("Edit", systemImage: "square.and.pencil") }
-                                        .tint(.orange)
-                                }
+                                Button { library.edit(url) } label: { Label("Edit", systemImage: "square.and.pencil") }
+                                    .tint(.orange)
                             }
                         }
                         .onDelete { $0.map { library.recents[$0] }.forEach(library.forget) }
@@ -194,9 +188,7 @@ struct HomeView: View {
             }
             .navigationTitle("Metal Composer")
             .toolbar {
-                if canEdit {
-                    Button { library.edit(nil) } label: { Label("New Composition", systemImage: "plus") }
-                }
+                Button { library.edit(nil) } label: { Label("New Composition", systemImage: "plus") }
                 Button { picking = true } label: { Label("Open", systemImage: "folder") }
             }
             .fileImporter(isPresented: $picking, allowedContentTypes: [.metalComposition]) { result in

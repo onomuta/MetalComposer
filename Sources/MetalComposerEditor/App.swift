@@ -153,36 +153,47 @@ struct ContentView: View {
     private static let editorMinWidth = 320.0
     /// Height of the viewer and inspector row under the editor in the compact layout.
     @AppStorage("compactBottomHeight") private var compactBottomHeight = 420.0
-    /// The compact layout is in use (tracked for the toolbar's library button).
-    @State private var isCompact = false
-    /// The library floating over the editor in the compact layout (the columns' library is
-    /// `state.showLibrary`, so each layout keeps its own).
+    /// The layout in use (tracked for the toolbar).
+    @State private var layout = Layout.columns
+    /// The library floating over the editor in the compact and phone layouts (the columns'
+    /// library is `state.showLibrary`, so each keeps its own).
     @State private var showFloatingLibrary = false
+    /// The inspector sheet in the phone layout.
+    @State private var showInspectorSheet = false
 
-    /// Portrait iPad, or a narrow window in Split View: the editor takes the full width with the
-    /// viewer and inspector under it, and the library floats over the editor. The Mac always
-    /// uses columns.
-    private static func isCompact(_ size: CGSize) -> Bool {
+    enum Layout {
+        /// Library, editor, viewer over inspector: the Mac and landscape iPad.
+        case columns
+        /// Editor over viewer and inspector, library floating: portrait iPad, narrow Split View.
+        case compact
+        /// Viewer and editor, inspector in a sheet, library floating: iPhone, Slide Over.
+        case phone
+    }
+
+    private static func layout(for size: CGSize) -> Layout {
         #if os(macOS)
-        return false
+        return .columns
         #else
-        return size.width < size.height || size.width < 900
+        if size.width < 600 || size.height < 500 { return .phone }
+        if size.width < size.height || size.width < 900 { return .compact }
+        return .columns
         #endif
     }
 
     var body: some View {
         GeometryReader { geo in
+            let layout = Self.layout(for: geo.size)
             Group {
-                if Self.isCompact(geo.size) {
-                    compactLayout(geo.size)
-                } else {
-                    columnsLayout(geo.size)
+                switch layout {
+                case .columns: columnsLayout(geo.size)
+                case .compact: compactLayout(geo.size)
+                case .phone: phoneLayout(geo.size)
                 }
             }
-            .onChange(of: Self.isCompact(geo.size), initial: true) { _, compact in isCompact = compact }
-            // ⌘↩ (Find Patch) opens the floating library in the compact layout.
+            .onChange(of: layout, initial: true) { _, new in self.layout = new }
+            // ⌘↩ (Find Patch) opens the floating library outside the columns layout.
             .onChange(of: state.librarySearchRequest) { _, _ in
-                if isCompact { showFloatingLibrary = true }
+                if self.layout != .columns { showFloatingLibrary = true }
             }
         }
         #if os(macOS)
@@ -198,11 +209,38 @@ struct ContentView: View {
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
-                    if isCompact { showFloatingLibrary.toggle() } else { state.showLibrary.toggle() }
+                    if layout == .columns { state.showLibrary.toggle() } else { showFloatingLibrary.toggle() }
                 } label: { Image(systemName: "sidebar.left") }
                     .help(state.showLibrary ? "Hide Patch Library (⌥⌘L)" : "Show Patch Library (⌥⌘L)")
             }
+            if layout == .phone {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { showInspectorSheet.toggle() } label: {
+                        Label("Inspector", systemImage: "slider.horizontal.3")
+                    }
+                }
+            }
         }
+    }
+
+    /// The graph editor with the library floating over its top-left corner.
+    private func editorWithFloatingLibrary(libraryWidth: CGFloat, libraryHeight: CGFloat) -> some View {
+        GraphEditorView(composition: composition)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) {
+                if showFloatingLibrary {
+                    LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
+                                onAddedFromSearch: { showFloatingLibrary = false },
+                                onAdd: { showFloatingLibrary = false })
+                        .frame(width: libraryWidth, height: max(160, libraryHeight))
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .shadow(radius: 12)
+                        .padding(10)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+            }
+            .animation(.easeOut(duration: 0.2), value: showFloatingLibrary)
     }
 
     /// Editor on top at full width; viewer and inspector side by side below it.
@@ -210,22 +248,8 @@ struct ContentView: View {
         // Keep at least a usable editor above and a usable row below.
         let bottom = min(max(compactBottomHeight, 240), max(240, size.height - 300))
         return VStack(spacing: 0) {
-            GraphEditorView(composition: composition)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .overlay(alignment: .topLeading) {
-                    if showFloatingLibrary {
-                        LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
-                                    onAddedFromSearch: { showFloatingLibrary = false },
-                                    onAdd: { showFloatingLibrary = false })
-                            .frame(width: min(320, size.width - 40), height: min(560, size.height - bottom - 40))
-                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                            .shadow(radius: 12)
-                            .padding(10)
-                            .transition(.move(edge: .leading).combined(with: .opacity))
-                    }
-                }
-                .animation(.easeOut(duration: 0.2), value: showFloatingLibrary)
+            editorWithFloatingLibrary(libraryWidth: min(320, size.width - 40),
+                                      libraryHeight: min(560, size.height - bottom - 40))
             RowResizeHandle(height: $compactBottomHeight, shown: bottom, range: 240...1000, growsUpward: true)
             HStack(spacing: 0) {
                 ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer)
@@ -235,6 +259,34 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
             }
             .frame(height: bottom)
+        }
+    }
+
+    /// Phone: the viewer above the editor (beside it in landscape); the inspector is a sheet that
+    /// can stay open at half height while the editor is used, following the selection.
+    private func phoneLayout(_ size: CGSize) -> some View {
+        let viewer = ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer)
+        return Group {
+            if size.width > size.height {
+                HStack(spacing: 0) {
+                    editorWithFloatingLibrary(libraryWidth: min(300, size.width * 0.6 - 40), libraryHeight: size.height - 40)
+                    Rectangle().fill(Color.separatorLine).frame(width: 1)
+                    viewer.frame(width: size.width * 0.4)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    // A 16:9 picture plus the viewer's control bar, but never most of the screen.
+                    viewer.frame(height: min(size.width * 9 / 16 + 36, size.height * 0.4))
+                    Rectangle().fill(Color.separatorLine).frame(height: 1)
+                    editorWithFloatingLibrary(libraryWidth: min(320, size.width - 40), libraryHeight: size.height * 0.5)
+                }
+            }
+        }
+        .sheet(isPresented: $showInspectorSheet) {
+            InspectorView(composition: composition)
+                .presentationDetents([.fraction(0.35), .medium, .large])
+                .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+                .presentationDragIndicator(.visible)
         }
     }
 

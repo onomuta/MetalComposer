@@ -7,7 +7,7 @@ import MetalComposerKit
 /// The whole editor (library, graph, viewer, inspector) for an iPad app: opens `url`, or a new
 /// composition when it is nil. Changes are saved automatically; new compositions go to the app's
 /// Documents folder (Files › On My iPad). The title renames the file, and its menu duplicates,
-/// saves elsewhere or shares it; ‹ closes it. `onClose` gets the file the composition ended up in.
+/// saves elsewhere, shares it or exports a movie; ‹ closes it. `onClose` gets the file the composition ended up in.
 public struct EditorScreen: View {
     private let url: URL?
     private let onClose: (URL?) -> Void
@@ -34,13 +34,10 @@ public struct EditorScreen: View {
                     if let url = state.composition.fileURL {
                         ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
                     }
+                    Divider()
+                    Button { state.showExport = true } label: { Label("Export Movie…", systemImage: "film") }
                 }
                 // The editor role's ‹ button closes the editor, like a document app's.
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        Button { state.showExport = true } label: { Label("Export Movie", systemImage: "film") }
-                    }
-                }
                 .modifier(EditCommands(state: state))
                 .background {
                     Button("Save") { session.save() }.keyboardShortcut("s").hidden()

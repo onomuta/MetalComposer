@@ -132,7 +132,7 @@ struct GraphEditorView: View {
                 drawMarquee(&g)
             }
             // Not under the top bar (iPad), so its title stays readable.
-            .background(Color(white: composition.path.isEmpty ? 0.11 : 0.085), ignoresSafeAreaEdges: [])
+            .background(Color(white: composition.path.isEmpty ? 0.11 : 0.085), ignoresSafeAreaEdges: [.bottom, .horizontal])
             .contentShape(Rectangle())
             .gesture(dragGesture)
             .simultaneousGesture(magnifyGesture)
@@ -167,6 +167,8 @@ struct GraphEditorView: View {
             .popover(isPresented: Binding(get: { touchMenu != nil }, set: { if !$0 { touchMenu = nil } }),
                      attachmentAnchor: .rect(.rect(CGRect(origin: touchMenu?.point ?? .zero, size: .zero)))) {
                 touchMenuContent
+                    // Stay a popover at the finger on iPhone too, rather than a sheet.
+                    .presentationCompactAdaptation(.popover)
             }
             #endif
             .dropDestination(for: URL.self) { urls, location in
@@ -519,7 +521,9 @@ struct GraphEditorView: View {
                                 insertionPoint: CGPoint(x: menu.graphPoint.x - 20, y: menu.graphPoint.y - 10),
                                 onAdd: { touchMenu = nil })
                 }
-                .frame(width: 320, height: 480)
+                // Up to 480 tall; the list gives way when there is less room (iPhone).
+                .frame(width: 320)
+                .frame(minHeight: 220, idealHeight: 480, maxHeight: 480)
             }
         }
     }
