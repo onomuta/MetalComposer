@@ -1,6 +1,7 @@
 #if !os(macOS)
 import Combine
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import MetalComposerKit
 
@@ -35,8 +36,9 @@ public struct EditorScreen: View {
                     RenameButton()
                     Button { session.duplicate() } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
                     Button { savingAs = true } label: { Label("Save As…", systemImage: "folder") }
-                    if let url = state.composition.fileURL {
-                        ShareLink(item: url) { Label("Share…", systemImage: "square.and.arrow.up") }
+                    // A ShareLink doesn't present from this menu, so open the share sheet directly.
+                    Button { session.fileForSharing().map(ShareSheet.present) } label: {
+                        Label("Share…", systemImage: "square.and.arrow.up")
                     }
                     Divider()
                     Button { state.showExport = true } label: { Label("Export Movie…", systemImage: "film") }
@@ -104,6 +106,17 @@ final class EditorSession: ObservableObject {
         guard let data = currentData(), data != savedData else { return }
         guard let url = composition.fileURL ?? Self.unusedURL(named: newName) else { return }
         if state.write(to: url) { savedData = data }
+    }
+
+    /// The composition's file, up to date, for sharing (AirDrop to a Mac…). A new composition
+    /// that hasn't been changed gets its file now.
+    func fileForSharing() -> URL? {
+        save()
+        if composition.fileURL == nil, let url = Self.unusedURL(named: newName), let data = currentData(),
+           state.write(to: url) {
+            savedData = data
+        }
+        return composition.fileURL
     }
 
     /// Saves, gives back file access, and returns where the composition is.
@@ -184,6 +197,30 @@ final class EditorSession: ObservableObject {
             if !FileManager.default.fileExists(atPath: url.path) { return url }
             n += 1
         }
+    }
+}
+
+/// The system share sheet (AirDrop, Messages, Save to Files…) for a file.
+private enum ShareSheet {
+    static func present(_ url: URL) {
+        // Wait for the menu that asked for it to finish closing; presenting during that fails.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { show(url) }
+    }
+
+    private static func show(_ url: URL) {
+        guard let scene = UIApplication.shared.connectedScenes
+                .compactMap({ $0 as? UIWindowScene })
+                .first(where: { $0.activationState == .foregroundActive && $0.session.role == .windowApplication }),
+              var top = scene.keyWindow?.rootViewController else { return }
+        while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+        let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        // iPad shows it as a popover; anchor it under the title.
+        if let popover = sheet.popoverPresentationController {
+            popover.sourceView = top.view
+            popover.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.safeAreaInsets.top + 8, width: 0, height: 0)
+            popover.permittedArrowDirections = .up
+        }
+        top.present(sheet, animated: true)
     }
 }
 
