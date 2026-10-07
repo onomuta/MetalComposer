@@ -13,6 +13,16 @@ struct LibraryView: View {
     var searchRequest: Int
     /// Called after Return adds the highlighted patch (the window closes the library).
     var onAddedFromSearch: () -> Void = {}
+    /// Where new patches go; nil places them near the middle of the editor.
+    var insertionPoint: CGPoint?
+    /// Called after any patch is added.
+    var onAdd: () -> Void = {}
+
+    #if os(macOS)
+    private static let searchPrompt = "Search patches  (⌘↩)"
+    #else
+    private static let searchPrompt = "Search patches"
+    #endif
 
     @State private var search = ""
     @State private var highlighted = 0
@@ -41,7 +51,7 @@ struct LibraryView: View {
     var body: some View {
         let results = results
         VStack(spacing: 0) {
-            TextField("Search patches  (⌘↩)", text: $search)
+            TextField(Self.searchPrompt, text: $search)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
                 .padding(8)
@@ -163,8 +173,13 @@ struct LibraryView: View {
     }
 
     private func add(_ type: Patch.Type) {
-        let jitter = CGFloat(composition.graph.nodes.count % 6) * 16
-        let c = composition.visibleCenter
-        composition.add(type, at: CGPoint(x: c.x + jitter, y: c.y + jitter))
+        if let insertionPoint {
+            composition.add(type, at: insertionPoint)
+        } else {
+            let jitter = CGFloat(composition.graph.nodes.count % 6) * 16
+            let c = composition.visibleCenter
+            composition.add(type, at: CGPoint(x: c.x + jitter, y: c.y + jitter))
+        }
+        onAdd()
     }
 }

@@ -1,5 +1,7 @@
 #if os(macOS)
 import AppKit
+#else
+import UIKit
 #endif
 import SwiftUI
 import UniformTypeIdentifiers
@@ -76,6 +78,18 @@ struct GraphEditorView: View {
     @State private var hoveredPort: PortHit?
     @State private var editingComment: UUID?
     @FocusState private var focused: Bool
+    /// The long-press menu (touch): where it was opened.
+    @State private var touchMenu: TouchMenu?
+    @State private var longPress: Task<Void, Never>?
+    /// The port whose value a long press is showing (touch has no hover).
+    @State private var pinnedPort: PortHit?
+
+    /// A long press on the canvas, in view and graph coordinates; `onPatch` when it landed on one.
+    private struct TouchMenu {
+        var point: CGPoint
+        var graphPoint: CGPoint
+        var onPatch: Bool
+    }
 
     private struct PortHit {
         var ref: PortRef
@@ -146,7 +160,14 @@ struct GraphEditorView: View {
                     hoveredPort = nil
                 }
             }
+            #if os(macOS)
             .contextMenu { contextMenu }
+            #else
+            .popover(isPresented: Binding(get: { touchMenu != nil }, set: { if !$0 { touchMenu = nil } }),
+                     attachmentAnchor: .rect(.rect(CGRect(origin: touchMenu?.point ?? .zero, size: .zero)))) {
+                touchMenuContent
+            }
+            #endif
             .dropDestination(for: URL.self) { urls, location in
                 let images = urls.filter { url in
                     url.isFileURL && (UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) ?? false)
@@ -198,22 +219,34 @@ struct GraphEditorView: View {
 
     // MARK: Hit testing
 
+    /// How close to a port counts as on it, in graph units. A finger needs more room than a
+    /// pointer, the same on screen at any zoom.
+    private var portHitRadius: CGFloat {
+        #if os(macOS)
+        NodeLayout.portHitRadius
+        #else
+        max(NodeLayout.portHitRadius, 22 / zoom)
+        #endif
+    }
+
+    /// The port nearest to `p` within reach, topmost patch first on a tie.
     private func hitPort(_ p: CGPoint) -> PortHit? {
+        var best: (hit: PortHit, distance: CGFloat)?
+        func consider(_ hit: PortHit) {
+            let d = hypot(hit.point.x - p.x, hit.point.y - p.y)
+            if d < portHitRadius, d < (best?.distance ?? .infinity) { best = (hit, d) }
+        }
         for node in graph.nodes.reversed() {
             for (i, spec) in node.outputPorts.enumerated() {
-                let pt = NodeLayout.outputPoint(node, i)
-                if hypot(pt.x - p.x, pt.y - p.y) < NodeLayout.portHitRadius {
-                    return PortHit(ref: PortRef(node: node.id, port: spec.key), isOutput: true, type: spec.type, point: pt)
-                }
+                consider(PortHit(ref: PortRef(node: node.id, port: spec.key), isOutput: true, type: spec.type,
+                                 point: NodeLayout.outputPoint(node, i)))
             }
             for (i, spec) in node.inputPorts.enumerated() {
-                let pt = NodeLayout.inputPoint(node, i)
-                if hypot(pt.x - p.x, pt.y - p.y) < NodeLayout.portHitRadius {
-                    return PortHit(ref: PortRef(node: node.id, port: spec.key), isOutput: false, type: spec.type, point: pt)
-                }
+                consider(PortHit(ref: PortRef(node: node.id, port: spec.key), isOutput: false, type: spec.type,
+                                 point: NodeLayout.inputPoint(node, i)))
             }
         }
-        return nil
+        return best?.hit
     }
 
     private func hitNode(_ p: CGPoint) -> Patch? {
@@ -233,7 +266,11 @@ struct GraphEditorView: View {
     private var dragGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if drag == nil { beginDrag(at: value.startLocation) }
+                if drag == nil {
+                    beginDrag(at: value.startLocation)
+                    startLongPress(at: value.startLocation)
+                }
+                if hypot(value.translation.width, value.translation.height) > 6 { cancelLongPress() }
                 let p = toGraph(value.location)
                 switch drag {
                 case .pan(let start):
@@ -265,6 +302,7 @@ struct GraphEditorView: View {
                 }
             }
             .onEnded { value in
+                cancelLongPress()
                 switch drag {
                 case .connect(let from, _):
                     if let target = hitPort(toGraph(value.location)), target.isOutput != from.isOutput {
@@ -292,6 +330,7 @@ struct GraphEditorView: View {
         focused = true
         editingComment = nil
         hoveredPort = nil
+        pinnedPort = nil
         let p = toGraph(screenPoint)
         let extend = HeldKeys.shift || HeldKeys.command
 
@@ -356,7 +395,14 @@ struct GraphEditorView: View {
     private var magnifyGesture: some Gesture {
         MagnifyGesture()
             .onChanged { value in
-                if pinchStartZoom == nil { pinchStartZoom = zoom }
+                if pinchStartZoom == nil {
+                    pinchStartZoom = zoom
+                    // The pinch's first finger also started a drag; stop it panning or selecting.
+                    cancelLongPress()
+                    if case .marquee(_, _, let base) = drag { composition.selection = base }
+                    if case .pan(let start) = drag { offset = start }
+                    if drag != nil { drag = .ignore }
+                }
                 setZoom(pinchStartZoom! * value.magnification, around: value.startLocation)
             }
             .onEnded { _ in pinchStartZoom = nil }
@@ -386,6 +432,108 @@ struct GraphEditorView: View {
         if let m = scrollMonitor { NSEvent.removeMonitor(m) }
         scrollMonitor = nil
         #endif
+    }
+
+    // MARK: Long press (touch)
+
+    private func startLongPress(at screenPoint: CGPoint) {
+        #if !os(macOS)
+        longPress?.cancel()
+        longPress = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
+            longPressed(at: screenPoint)
+        }
+        #endif
+    }
+
+    private func cancelLongPress() {
+        longPress?.cancel()
+        longPress = nil
+    }
+
+    /// On a port: show its value. On a patch or empty space: open the menu there.
+    private func longPressed(at screenPoint: CGPoint) {
+        let p = toGraph(screenPoint)
+        switch drag {
+        case .move(_, _, true, _), .resize(_, _, _, true), .ignore, nil:
+            return // already moving something, or the finger is up
+        case .connect:
+            // Grabbing a connected input detached its wire; put it back.
+            if detachedWire { composition.undo() }
+            detachedWire = false
+            drag = .ignore
+            pinnedPort = hitPort(p)
+        case .marquee(_, _, let base):
+            composition.selection = base
+            drag = .ignore
+            touchMenu = TouchMenu(point: screenPoint, graphPoint: p, onPatch: false)
+        default:
+            let onPatch = hitNode(p) != nil
+            if !onPatch { composition.selection = [] }
+            drag = .ignore
+            touchMenu = TouchMenu(point: screenPoint, graphPoint: p, onPatch: onPatch)
+        }
+        #if !os(macOS)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        #endif
+    }
+
+    /// Long-press menu: actions for the selected patches, or adding a patch where the finger was.
+    @ViewBuilder private var touchMenuContent: some View {
+        if let menu = touchMenu {
+            if menu.onPatch {
+                VStack(alignment: .leading, spacing: 0) {
+                    let close = { touchMenu = nil }
+                    menuButton("Duplicate", "plus.square.on.square") { composition.duplicateSelection(); close() }
+                    menuButton("Copy", "doc.on.doc") { composition.copySelection(); close() }
+                    menuButton("Group into Macro", "square.stack.3d.up") { composition.groupSelectionIntoMacro(); close() }
+                    if let node = composition.singleSelection, node.subgraph != nil {
+                        menuButton("Open \(node.displayTitle)", "arrow.down.right.square") { composition.enter(node); close() }
+                        if composition.canExplode(node) {
+                            menuButton("Explode Macro", "square.split.2x2") { composition.explodeMacro(node); close() }
+                        }
+                    }
+                    Divider()
+                    menuButton("Delete", "trash", role: .destructive) { composition.deleteSelection(); close() }
+                }
+                .padding(.vertical, 6)
+                .frame(width: 260)
+            } else {
+                VStack(spacing: 0) {
+                    HStack {
+                        Button {
+                            composition.addComment(at: menu.graphPoint)
+                            touchMenu = nil
+                        } label: { Label("Add Comment", systemImage: "text.bubble") }
+                        Spacer()
+                        Button {
+                            composition.paste()
+                            touchMenu = nil
+                        } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 12)
+                    LibraryView(composition: composition, searchRequest: 0,
+                                insertionPoint: CGPoint(x: menu.graphPoint.x - 20, y: menu.graphPoint.y - 10),
+                                onAdd: { touchMenu = nil })
+                }
+                .frame(width: 320, height: 480)
+            }
+        }
+    }
+
+    private func menuButton(_ title: String, _ symbol: String, role: ButtonRole? = nil,
+                            action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Label(title, systemImage: symbol)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(role == .destructive ? Color.red : Color.primary)
     }
 
     // MARK: Menus & overlays
@@ -639,7 +787,8 @@ struct GraphEditorView: View {
     }
 
     @ViewBuilder private var portTooltip: some View {
-        if let hit = hoveredPort, drag == nil, let node = graph.node(hit.ref.node) {
+        // Hover shows a port while nothing is dragged; a long press keeps showing it until the next touch.
+        if let hit = (drag == nil ? hoveredPort : nil) ?? pinnedPort, let node = graph.node(hit.ref.node) {
             let name = (hit.isOutput ? node.outputPorts : node.inputPorts).first { $0.key == hit.ref.port }?.name ?? hit.ref.port
             TimelineView(.periodic(from: .now, by: 0.1)) { _ in
                 let current = currentValue(hit)

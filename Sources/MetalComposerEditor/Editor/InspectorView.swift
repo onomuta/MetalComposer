@@ -10,6 +10,12 @@ import MetalComposerKit
 struct InspectorView: View {
     @ObservedObject var composition: Composition
 
+    #if os(macOS)
+    private static let emptyHint = "Right-click the canvas or use the library to add patches.\nDrag from an output to an input to connect; drag on empty space to select several."
+    #else
+    private static let emptyHint = "Touch and hold the canvas or use the library to add patches.\nDrag from an output to an input to connect; drag empty space to move around. Touch and hold a port to see its value."
+    #endif
+
     var body: some View {
         if let node = composition.singleSelection {
             NodeInspector(node: node, composition: composition).id(node.id)
@@ -28,7 +34,7 @@ struct InspectorView: View {
             VStack(spacing: 8) {
                 Image(systemName: "square.on.square.dashed").font(.largeTitle).foregroundStyle(.tertiary)
                 Text("Select a patch to edit its inputs").foregroundStyle(.secondary)
-                Text("Right-click the canvas or use the library to add patches.\nDrag from an output to an input to connect; drag on empty space to select several.")
+                Text(Self.emptyHint)
                     .font(.caption).foregroundStyle(.tertiary).multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

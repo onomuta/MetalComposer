@@ -14,7 +14,14 @@ struct Knob: View {
     var limits: ClosedRange<Double>?
     var step: Double?
     var defaultValue: Double
-    var size: CGFloat = 22
+    var size: CGFloat = Knob.defaultSize
+
+    /// Bigger with touch, so a finger can grab it.
+    #if os(macOS)
+    static let defaultSize: CGFloat = 22
+    #else
+    static let defaultSize: CGFloat = 30
+    #endif
 
     @State private var dragStart: Double?
 
