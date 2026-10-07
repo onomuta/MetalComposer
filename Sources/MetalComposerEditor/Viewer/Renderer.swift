@@ -45,6 +45,12 @@ final class Renderer: NSObject, MTKViewDelegate {
     /// Set while a movie export is running so the GPU isn't shared with the live preview.
     var isSuspended = false
 
+    /// How many mirror previews are showing. While any are, each frame is also copied to
+    /// `lastFrame` for them: a mirror only shows frames, so time and stateful patches still
+    /// advance once per frame.
+    var mirrorCount = 0
+    private(set) var lastFrame: MTLTexture?
+
     func draw(in view: MTKView) {
         guard !isSuspended,
               let pass = view.currentRenderPassDescriptor,
@@ -57,8 +63,22 @@ final class Renderer: NSObject, MTKViewDelegate {
                               mouse: mouse, mouseDown: mouseDown,
                               published: parameters.published(for: composition), inspect: composition.selection)
         FrameRenderer.encodeFrame(graph: composition.root, context: ctx, pass: pass, targetSize: view.drawableSize)
+        if mirrorCount > 0 { copyForMirrors(drawable.texture, commandBuffer) }
         commandBuffer.present(drawable)
         commandBuffer.commit()
+    }
+
+    private func copyForMirrors(_ texture: MTLTexture, _ commandBuffer: MTLCommandBuffer) {
+        if lastFrame?.width != texture.width || lastFrame?.height != texture.height {
+            let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: texture.pixelFormat, width: texture.width,
+                                                                height: texture.height, mipmapped: false)
+            desc.usage = [.shaderRead]
+            desc.storageMode = .private
+            lastFrame = resources.device.makeTexture(descriptor: desc)
+        }
+        guard let lastFrame, let blit = commandBuffer.makeBlitCommandEncoder() else { return }
+        blit.copy(from: texture, to: lastFrame)
+        blit.endEncoding()
     }
 }
 

@@ -1,4 +1,7 @@
 import MetalKit
+#if os(iOS)
+import MetalPerformanceShaders
+#endif
 import SwiftUI
 import MetalComposerKit
 
@@ -11,6 +14,8 @@ struct MetalViewer {
         view.depthStencilPixelFormat = RenderResources.depthFormat
         view.clearDepth = 1
         view.preferredFramesPerSecond = 120
+        // Mirror previews copy the frame out of the drawable.
+        view.framebufferOnly = false
         view.renderer = renderer
         view.delegate = renderer
         return view
@@ -178,3 +183,72 @@ struct ViewerPanel: View {
         }
     }
 }
+
+#if os(iOS)
+/// A small copy of what the viewer shows (for the phone layout's inspector sheet). It draws no
+/// frames of its own, only scales the viewer's latest one, so playback isn't doubled.
+struct MirrorViewer: View {
+    let renderer: Renderer
+    /// Width / height of the viewer's frames, checked now and then (the viewer can be resized).
+    @State private var aspect: CGFloat = 16 / 9
+
+    var body: some View {
+        MirrorMetalView(renderer: renderer)
+            .aspectRatio(aspect, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .background(Color.black)
+            .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+                if let frame = renderer.lastFrame, frame.height > 0 {
+                    let new = CGFloat(frame.width) / CGFloat(frame.height)
+                    if abs(new - aspect) > 0.01 { aspect = new }
+                }
+            }
+    }
+}
+
+private struct MirrorMetalView: UIViewRepresentable {
+    let renderer: Renderer
+
+    func makeCoordinator() -> Coordinator { Coordinator(renderer: renderer) }
+
+    func makeUIView(context: Context) -> MTKView {
+        let view = MTKView(frame: .zero, device: renderer.resources.device)
+        view.colorPixelFormat = RenderResources.pixelFormat
+        view.framebufferOnly = false
+        view.preferredFramesPerSecond = 30
+        view.delegate = context.coordinator
+        renderer.mirrorCount += 1
+        return view
+    }
+
+    func updateUIView(_ view: MTKView, context: Context) {}
+
+    static func dismantleUIView(_ view: MTKView, coordinator: Coordinator) {
+        coordinator.renderer.mirrorCount -= 1
+    }
+
+    final class Coordinator: NSObject, MTKViewDelegate {
+        let renderer: Renderer
+        private lazy var scaler = MPSImageBilinearScale(device: renderer.resources.device)
+
+        init(renderer: Renderer) { self.renderer = renderer }
+
+        func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+
+        func draw(in view: MTKView) {
+            guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
+                  let commandBuffer = renderer.resources.queue.makeCommandBuffer() else { return }
+            if let frame = renderer.lastFrame {
+                // The view is shaped like the frame (see `aspect`), so the frame just fills it.
+                scaler.encode(commandBuffer: commandBuffer, sourceTexture: frame, destinationTexture: drawable.texture)
+            } else {
+                pass.colorAttachments[0].loadAction = .clear
+                pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+                commandBuffer.makeRenderCommandEncoder(descriptor: pass)?.endEncoding()
+            }
+            commandBuffer.present(drawable)
+            commandBuffer.commit()
+        }
+    }
+}
+#endif

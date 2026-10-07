@@ -33,6 +33,7 @@ final class AppState: ObservableObject {
     var keyMonitor: Any?
     private var documentFolder: AnyCancellable?
     private var parametersReset: AnyCancellable?
+    private var viewerRestart: AnyCancellable?
 
     init() {
         guard let device = MTLCreateSystemDefaultDevice() else { fatalError("Metal is not supported on this device") }
@@ -53,6 +54,10 @@ final class AppState: ObservableObject {
             renderer.resources.baseDirectory = url?.deletingLastPathComponent()
         }
         // Values tried for one composition's parameters don't carry over to the next.
+        #if os(macOS)
+        viewerRestart = NotificationCenter.default.publisher(for: .restartViewerDisplayLink)
+            .sink { [weak self] _ in self?.viewerGeneration += 1 }
+        #endif
         parametersReset = NotificationCenter.default.publisher(for: .compositionReplaced)
             .sink { [renderer] _ in renderer.parameters.values = [:] }
     }
@@ -310,7 +315,18 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showInspectorSheet) {
-            InspectorView(composition: composition)
+            VStack(spacing: 0) {
+                #if os(iOS)
+                // Stays in view at any sheet height, so values can be watched while edited.
+                MirrorViewer(renderer: state.renderer)
+                    .frame(height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .padding(.horizontal, 16)
+                    .padding(.top, 20)
+                    .padding(.bottom, 4)
+                #endif
+                InspectorView(composition: composition)
+            }
                 .presentationDetents([.fraction(0.35), .medium, .large])
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationDragIndicator(.visible)
@@ -394,6 +410,8 @@ struct ContentView: View {
                         let height = min(viewerHeight,
                                          max(240, geo.size.height - RowResizeHandle.height - Self.inspectorMinHeight))
                         ViewerPanel(renderer: state.renderer, playback: state.playback, onTogglePopOut: popOutViewer)
+                        // A fresh Metal view after a Finder open event, which stops the old one's frames.
+                        .id(state.viewerGeneration)
                         .frame(height: height)
                         RowResizeHandle(height: $viewerHeight, shown: height, range: 240...1200)
                     }

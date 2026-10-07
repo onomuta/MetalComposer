@@ -50,6 +50,10 @@ extension AppState {
     }
 }
 
+extension Notification.Name {
+    static let restartViewerDisplayLink = Notification.Name("MetalComposer.restartViewerDisplayLink")
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppAppearance.current.apply()
@@ -75,6 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // One document at a time: the last file wins.
         guard let url = urls.last else { return }
         if let openHandler { openHandler(url) } else { pendingURLs = [url] }
+        // An open event stops the viewer's display link (the view isn't paused, it just stops
+        // getting frames); restart it once AppKit is done with the event.
+        DispatchQueue.main.async { NotificationCenter.default.post(name: .restartViewerDisplayLink, object: nil) }
     }
 }
 
