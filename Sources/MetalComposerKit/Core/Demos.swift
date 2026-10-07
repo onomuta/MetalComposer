@@ -144,7 +144,7 @@ package enum Demo: String, CaseIterable, Identifiable {
             params["color"] = .color(face.2)
             sub.put(SpritePatch.self, CGFloat(40 + (i % 3) * 220), CGFloat(40 + (i / 3) * 280), params, name: face.0)
         }
-        let label = sub.put(TextImagePatch.self, 40, 600, ["text": .string("Metal"), "size": .number(96)])
+        let label = sub.put(TextImagePatch.self, 40, 600, ["text": .string("Mirage"), "size": .number(96)])
         let billboard = sub.put(BillboardPatch.self, 300, 600, ["width": .number(0.32)], name: "Label (faces viewer)")
         sub.link(label, "image", billboard, "image")
     }
