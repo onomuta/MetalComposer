@@ -15,8 +15,10 @@ struct Shot {
     var subtitle: String
 }
 
-/// Output sizes: 6.9" iPhone portrait, 13" iPad landscape, Mac (16:10).
+/// Output sizes: 6.9" and 6.3" iPhone portrait (App Store Connect now asks for the 6.3" set first),
+/// 13" iPad landscape, Mac (16:10).
 let iPhoneSize = CGSize(width: 1320, height: 2868)
+let iPhoneMediumSize = CGSize(width: 1206, height: 2622)
 let iPadSize = CGSize(width: 2752, height: 2064)
 let macSize = CGSize(width: 2880, height: 1800)
 
@@ -182,7 +184,10 @@ func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool, lang
 }
 
 for language in languages {
-    for shot in language.iPhone { compose(shot, device: "iPhone", canvas: iPhoneSize, landscape: false, language: language) }
+    for shot in language.iPhone {
+        compose(shot, device: "iPhone", canvas: iPhoneSize, landscape: false, language: language)
+        compose(shot, device: "iPhone-6.3", canvas: iPhoneMediumSize, landscape: false, language: language, rawFolder: "iPhone")
+    }
     for shot in language.iPad { compose(shot, device: "iPad", canvas: iPadSize, landscape: true, language: language) }
     let macFolder = "Mac-" + (language.code == "en-US" ? "en" : language.code)
     for shot in language.mac {
