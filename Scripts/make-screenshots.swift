@@ -3,7 +3,7 @@
 // App Store language (iOS/AppStore/Screenshots/<language>/<device>).
 // Usage: swift Scripts/make-screenshots.swift   (run from the repository root)
 //
-// Raw captures: iPhone 17 Pro Max (portrait, 1320×2868) and iPad Pro 11-inch in landscape, which
+// Raw captures (kept locally, not in the repository: see .gitignore): iPhone 17 Pro Max (portrait, 1320×2868) and iPad Pro 11-inch in landscape, which
 // simctl saves rotated into a portrait image (it is turned back here).
 import AppKit
 import CoreGraphics
