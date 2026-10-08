@@ -229,6 +229,7 @@ final class MyPatch: Patch {
 - Mesh、Camera、Lighting、Compute Shader パッチ
 - ポート上での値の表示、フルスクリーン表示、録画（ProRes/HEVC への書き出し）
 - Syphon 互換の出力
+- .mcomp の Quick Look サムネイル拡張（Mac・iOS）：作品の 1 コマを描いてサムネイルにする。いまは Finder のアイコン表示で、書類アイコン（Assets/DocumentIcon）の代わりに中身の JSON の文字が出てしまう。拡張は Xcode のビルドにしか入らないので、手元に入れる Mac 版もサンドボックス版にそろえる
 
 ## ライセンス
 

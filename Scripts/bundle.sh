@@ -25,6 +25,7 @@ APP="build/Mirage Composer.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp Assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Assets/DocumentIcon.icns "$APP/Contents/Resources/DocumentIcon.icns"
 # Translations (Localization/<language>.lproj), shared with the iOS app.
 cp -R Localization/*.lproj "$APP/Contents/Resources/"
 cp "$BINARY" "$APP/Contents/MacOS/MetalComposer"
@@ -50,7 +51,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
       <key>UTTypeIdentifier</key><string>dev.metalcomposer.composition</string>
       <key>UTTypeDescription</key><string>Mirage Composer Composition</string>
       <key>UTTypeConformsTo</key><array><string>public.json</string></array>
-      <key>UTTypeIconFile</key><string>AppIcon</string>
+      <key>UTTypeIconFile</key><string>DocumentIcon</string>
       <key>UTTypeTagSpecification</key>
       <dict><key>public.filename-extension</key><array><string>mcomp</string></array></dict>
     </dict>
@@ -59,6 +60,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <array>
     <dict>
       <key>CFBundleTypeName</key><string>Mirage Composer Composition</string>
+      <key>CFBundleTypeIconFile</key><string>DocumentIcon</string>
       <key>CFBundleTypeRole</key><string>Editor</string>
       <key>LSHandlerRank</key><string>Owner</string>
       <key>LSItemContentTypes</key><array><string>dev.metalcomposer.composition</string></array>

@@ -69,11 +69,14 @@ targets:
           - UTTypeIdentifier: dev.metalcomposer.composition
             UTTypeDescription: Mirage Composer Composition
             UTTypeConformsTo: [public.json]
+            UTTypeIconFiles: [DocumentIcon-64.png, DocumentIcon-320.png]
             UTTypeTagSpecification:
               public.filename-extension: [mcomp]
         # The app opens, edits and saves these files (not only plays them).
         CFBundleDocumentTypes:
           - CFBundleTypeName: Mirage Composer Composition
+            # The .mcomp document icon (Scripts/make-icon.sh).
+            CFBundleTypeIconFiles: [DocumentIcon-64.png, DocumentIcon-320.png]
             CFBundleTypeRole: Editor
             LSHandlerRank: Owner
             LSItemContentTypes: [dev.metalcomposer.composition]
@@ -81,7 +84,11 @@ targets:
   MirageComposer-macOS:
     type: application
     platform: macOS
-    sources: [../Mac, ../Localization]
+    sources:
+      - ../Mac
+      - ../Localization
+      # The .mcomp document icon (Scripts/make-icon.sh), also used by Scripts/bundle.sh.
+      - ../Assets/DocumentIcon.icns
     dependencies:
       - package: MetalComposer
         product: MetalComposerEditor
@@ -111,11 +118,12 @@ targets:
           - UTTypeIdentifier: dev.metalcomposer.composition
             UTTypeDescription: Mirage Composer Composition
             UTTypeConformsTo: [public.json]
-            UTTypeIconFile: AppIcon
+            UTTypeIconFile: DocumentIcon
             UTTypeTagSpecification:
               public.filename-extension: [mcomp]
         CFBundleDocumentTypes:
           - CFBundleTypeName: Mirage Composer Composition
+            CFBundleTypeIconFile: DocumentIcon
             CFBundleTypeRole: Editor
             LSHandlerRank: Owner
             LSItemContentTypes: [dev.metalcomposer.composition]
