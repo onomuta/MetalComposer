@@ -15,15 +15,18 @@ struct Shot {
     var subtitle: String
 }
 
-/// Output sizes: 6.9" iPhone portrait, 13" iPad landscape.
+/// Output sizes: 6.9" iPhone portrait, 13" iPad landscape, Mac (16:10).
 let iPhoneSize = CGSize(width: 1320, height: 2868)
 let iPadSize = CGSize(width: 2752, height: 2064)
+let macSize = CGSize(width: 2880, height: 1800)
 
 /// Captions per App Store localization; each list matches the raw captures in order.
 struct Language {
     var code: String
     var iPhone: [Shot]
     var iPad: [Shot]
+    /// Mac window captures, in Raw/Mac-<code> (the app's own language differs, unlike iOS).
+    var mac: [Shot]
     /// Font for the caption and subtitle; nil is the system font.
     var bold: String?
     var medium: String?
@@ -41,6 +44,12 @@ let iPadShots = [
     Shot(raw: "03-cube", caption: "2D, 3D, particles and shaders", subtitle: "Build it all from patches"),
 ]
 
+let macShots = [
+    Shot(raw: "01-editor", caption: "A node editor for real-time visuals", subtitle: "Wire patches, tune values and watch the result live"),
+    Shot(raw: "02-viewer", caption: "Take it full screen", subtitle: "Pop out the viewer onto a projector or a second display"),
+    Shot(raw: "03-export", caption: "Export flawless movies", subtitle: "H.264, HEVC and ProRes, rendered frame by frame"),
+]
+
 let japanese = Language(
     code: "ja",
     iPhone: [
@@ -54,10 +63,15 @@ let japanese = Language(
         Shot(raw: "02-editor", caption: "フル機能のノードエディタを、タッチで", subtitle: "ライブラリ・グラフ・ビューア・インスペクタを一画面に"),
         Shot(raw: "03-cube", caption: "2D・3D・パーティクル、そしてシェーダー", subtitle: "すべてパッチの組み合わせで"),
     ],
+    mac: [
+        Shot(raw: "01-editor", caption: "リアルタイム映像のノードエディタ", subtitle: "パッチをつないで、値を変えて、その場で確かめる"),
+        Shot(raw: "02-viewer", caption: "フルスクリーンで上映", subtitle: "ビューアを別ウインドウにして、プロジェクターや外部ディスプレイへ"),
+        Shot(raw: "03-export", caption: "コマ落ちしないムービー書き出し", subtitle: "H.264・HEVC・ProRes を 1 フレームずつ正確に描画"),
+    ],
     bold: "HiraginoSans-W7", medium: "HiraginoSans-W5")
 
 let languages = [
-    Language(code: "en-US", iPhone: iPhoneShots, iPad: iPadShots, bold: nil, medium: nil),
+    Language(code: "en-US", iPhone: iPhoneShots, iPad: iPadShots, mac: macShots, bold: nil, medium: nil),
     japanese,
 ]
 
@@ -107,8 +121,8 @@ func drawText(_ text: String, in ctx: CGContext, canvas: CGSize, top: CGFloat, s
     return top + ceil(fit.height)
 }
 
-func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool, language: Language) {
-    var image = loadImage("iOS/AppStore/Raw/\(device)/\(shot.raw).png")
+func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool, language: Language, rawFolder: String? = nil) {
+    var image = loadImage("iOS/AppStore/Raw/\(rawFolder ?? device)/\(shot.raw).png")
     if landscape, image.height > image.width { image = rotatedClockwise(image) }
 
     let ctx = CGContext(data: nil, width: Int(canvas.width), height: Int(canvas.height), bitsPerComponent: 8,
@@ -170,4 +184,8 @@ func compose(_ shot: Shot, device: String, canvas: CGSize, landscape: Bool, lang
 for language in languages {
     for shot in language.iPhone { compose(shot, device: "iPhone", canvas: iPhoneSize, landscape: false, language: language) }
     for shot in language.iPad { compose(shot, device: "iPad", canvas: iPadSize, landscape: true, language: language) }
+    let macFolder = "Mac-" + (language.code == "en-US" ? "en" : language.code)
+    for shot in language.mac {
+        compose(shot, device: "Mac", canvas: macSize, landscape: true, language: language, rawFolder: macFolder)
+    }
 }
