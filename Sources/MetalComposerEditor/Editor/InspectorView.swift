@@ -266,6 +266,11 @@ private struct NodeInspector: View {
                         panel.allowedContentTypes = [.image]
                         if panel.runModal() == .OK, let url = panel.url {
                             stringBinding(spec).wrappedValue = composition.storedPath(for: url)
+                            // In the App Sandbox (Mac App Store) the file is readable only for
+                            // now, so keep its bytes in the composition.
+                            if Composition.filesReadableOnlyNow {
+                                composition.setParam(node, "embed", .bool(true))
+                            }
                         }
                         #else
                         choosingFileFor = spec.key

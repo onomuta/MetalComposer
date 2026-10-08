@@ -225,11 +225,25 @@ final class Composition: ObservableObject {
             let patch = ImageImporterPatch(position: CGPoint(x: position.x, y: position.y + CGFloat(i) * 70))
             patch.params["path"] = .string(storedPath(for: url))
             patch.customTitle = url.deletingPathExtension().lastPathComponent
+            if Self.filesReadableOnlyNow {
+                patch.params["embed"] = .bool(true)
+                updateEmbeddedImage(patch)
+            }
             added.append(patch)
         }
         graph.nodes += added
         selection = Set(added.map(\.id))
         touch()
+    }
+
+    /// iOS and the App Sandbox (Mac App Store) grant access to a dropped or picked file only
+    /// for now, so imported images are embedded there rather than referenced by path.
+    static var filesReadableOnlyNow: Bool {
+        #if os(macOS)
+        return ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
+        #else
+        return true
+        #endif
     }
 
     func selectAll() {

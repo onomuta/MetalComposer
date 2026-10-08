@@ -174,9 +174,20 @@ player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer,
 
 ```bash
 brew install xcodegen
-cd iOS && xcodegen             # MetalComposerPlayer.xcodeproj を作成（リポジトリには含めていません）
-open MetalComposerPlayer.xcodeproj
+cd iOS && xcodegen             # MirageComposer.xcodeproj を作成（リポジトリには含めていません）
+open MirageComposer.xcodeproj
 ```
+
+### App Store 版（iOS と Mac）
+
+`iOS/project.yml` には、App Store に出すための 2 つのターゲットがあります。どちらも Bundle ID は `dev.metalcomposer.app` で、App Store では 1 つのアプリ（Universal Purchase）として並びます。
+
+- **MirageComposer-iOS**：iPhone／iPad 版。
+- **MirageComposer-macOS**：Mac App Store 版。`Mac/` の小さな起動コードから、`swift run` と同じエディタを起動します。App Sandbox が有効です（`Mac/MirageComposer.entitlements`）。開く・保存・書き出しは、ユーザーが選んだファイルに対してだけ行えます。そのため、Image Importer で選んだ画像や、キャンバスにドロップした画像は、iOS と同じく自動で作品に埋め込みます。
+
+Xcode でそれぞれのスキームを選び、Product › Archive からアップロードします。バージョンは `project.yml` の `MARKETING_VERSION`（今は 1.0.0）と `CURRENT_PROJECT_VERSION`（ビルド番号。アップロードのたびに上げる）で決まります。プライバシーポリシーは https://onomuta.github.io/MetalComposer/privacy/ 、サポートページは https://onomuta.github.io/MetalComposer/support/ です（`docs/` を GitHub Pages で公開）。
+
+App Store 以外で配る Mac 版は、今までどおり `Scripts/bundle.sh` で作ります（サンドボックスなし）。
 
 - 組み込みのデモ、ファイルアプリから選んだ作品、「共有」や AirDrop で受け取った作品を再生できます。開いた作品は「Recent」に残ります。
 - 画面をタップすると操作ボタン（閉じる、再生／一時停止、最初から、パラメータ、問題）が出て、3 秒で消えます。指の位置は Mouse パッチに入ります。

@@ -1,11 +1,14 @@
-# Xcode project for the iOS player. Generate it with `xcodegen` (run in this folder);
-# the .xcodeproj itself isn't committed.
-name: MetalComposerPlayer
+# Xcode project for the App Store builds of Mirage Composer: iOS (iPhone, iPad) and macOS (App
+# Sandbox). Both use the bundle ID dev.metalcomposer.app so they share one App Store listing
+# (Universal Purchase). Generate it with `xcodegen` (run in this folder); the .xcodeproj itself
+# isn't committed. The Mac app outside the App Store is still built by Scripts/bundle.sh.
+name: MirageComposer
 options:
   bundleIdPrefix: dev.metalcomposer
   developmentLanguage: en
   deploymentTarget:
     iOS: "17.0"
+    macOS: "14.0"
 packages:
   MetalComposer:
     path: ..
@@ -13,10 +16,14 @@ settings:
   base:
     DEVELOPMENT_TEAM: BWZ7Q5QLJ5
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: 0.1.0
+    MARKETING_VERSION: 1.0.0
     CURRENT_PROJECT_VERSION: 1
+    PRODUCT_BUNDLE_IDENTIFIER: dev.metalcomposer.app
+    PRODUCT_NAME: Mirage Composer
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    GENERATE_INFOPLIST_FILE: NO
 targets:
-  MetalComposerPlayer:
+  MirageComposer-iOS:
     type: application
     platform: iOS
     # Localization holds the translations shared with the Mac app (ja.lproj…).
@@ -28,12 +35,11 @@ targets:
         product: MetalComposerEditor
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: dev.metalcomposer.player
-        PRODUCT_NAME: Mirage Composer
         TARGETED_DEVICE_FAMILY: "1,2"
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Player/Info.plist
+        # Mac has its own target; don't also offer the iPad app on Apple silicon Macs.
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
     info:
       path: Player/Info.plist
       properties:
@@ -43,6 +49,7 @@ targets:
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
+        LSApplicationCategoryType: public.app-category.graphics-design
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
@@ -64,8 +71,51 @@ targets:
             UTTypeConformsTo: [public.json]
             UTTypeTagSpecification:
               public.filename-extension: [mcomp]
+        # The app opens, edits and saves these files (not only plays them).
         CFBundleDocumentTypes:
           - CFBundleTypeName: Mirage Composer Composition
-            CFBundleTypeRole: Viewer
-            LSHandlerRank: Default
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
+            LSItemContentTypes: [dev.metalcomposer.composition]
+
+  MirageComposer-macOS:
+    type: application
+    platform: macOS
+    sources: [../Mac, ../Localization]
+    dependencies:
+      - package: MetalComposer
+        product: MetalComposerEditor
+    settings:
+      base:
+        INFOPLIST_FILE: ../Mac/Info.plist
+        CODE_SIGN_ENTITLEMENTS: ../Mac/MirageComposer.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+        # The executable keeps the name the SwiftPM build and bundle.sh use.
+        EXECUTABLE_NAME: MetalComposer
+    info:
+      path: ../Mac/Info.plist
+      properties:
+        CFBundleName: Mirage Composer
+        CFBundleDisplayName: Mirage Composer
+        CFBundleDevelopmentRegion: en
+        CFBundleLocalizations: [en, ja]
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleIconName: AppIcon
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.graphics-design
+        NSHighResolutionCapable: true
+        ITSAppUsesNonExemptEncryption: false
+        NSMicrophoneUsageDescription: Audio Input and Audio Spectrum patches react to sound from the microphone or audio input.
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: dev.metalcomposer.composition
+            UTTypeDescription: Mirage Composer Composition
+            UTTypeConformsTo: [public.json]
+            UTTypeIconFile: AppIcon
+            UTTypeTagSpecification:
+              public.filename-extension: [mcomp]
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Mirage Composer Composition
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Owner
             LSItemContentTypes: [dev.metalcomposer.composition]
