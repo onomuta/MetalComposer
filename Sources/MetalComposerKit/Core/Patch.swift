@@ -284,6 +284,8 @@ package class Patch: ObservableObject, Identifiable {
     }
     package var outputPorts: [PortSpec] { type(of: self).outputSpecs }
     package var inputPorts: [PortSpec] { allInputs.filter(\.isPort) }
+    /// Whether the inspector shows this setting now (e.g. options that only apply to one mode).
+    package func showsSetting(_ key: String) -> Bool { true }
     /// Child graph for macro-like patches.
     package var subgraph: Graph? { nil }
 

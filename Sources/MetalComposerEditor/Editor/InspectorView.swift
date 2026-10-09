@@ -89,10 +89,10 @@ private struct NodeInspector: View {
 
             if !node.allInputs.isEmpty {
                 Section("Inputs") {
-                    ForEach(node.allInputs.filter { !$0.hidden }, id: \.key) { spec in
+                    ForEach(node.allInputs.filter { !$0.hidden && ($0.isPort || node.showsSetting($0.key)) }, id: \.key) { spec in
                         inputRow(spec)
                     }
-                    if let importer = node as? ImageImporterPatch {
+                    if let importer = node as? ImageImporterPatch, importer.showsSetting("embed") {
                         embeddedImageNote(importer)
                     }
                 }

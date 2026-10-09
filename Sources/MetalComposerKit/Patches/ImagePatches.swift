@@ -7,12 +7,21 @@ package final class ImageImporterPatch: Patch {
     package override class var typeID: String { "image-importer" }
     package override class var title: String { "Image Importer" }
     package override class var category: PatchCategory { .provider }
-    package override class var summary: String { "Loads an image file (PNG, JPEG, HEIC…) into a texture." }
+    package override class var summary: String {
+        "Loads an image file (PNG, JPEG, HEIC…) into a texture, or makes a white preset shape with an optional glow."
+    }
+    /// The Image menu: a file, or a shape drawn by `preset_fragment` (same order as its cases).
+    package static let presets = ["File", "Circle", "Ring", "Soft Dot", "Square", "Frame", "Triangle", "Star", "Cross", "Line"]
     package override class var inputSpecs: [PortSpec] {
-        [.string("path", "File", "", isPort: false, isFilePath: true),
+        [.menu("preset", "Image", presets).setting(),
+         .string("path", "File", "", isPort: false, isFilePath: true),
          .bool("embed", "Embed in Composition", false).setting(),
          // The file's bytes (base64), kept in the composition while Embed is on. The editor fills it.
-         .string("data", "Embedded Data", "").hiddenSetting()]
+         .string("data", "Embedded Data", "").hiddenSetting(),
+         // Presets only. Sizes are relative to the shape's radius.
+         .number("thickness", "Line Width", 0.15, 0.01...1).limited(0.01...2).setting(),
+         .number("glow", "Glow", 0, 0...1).limited(0...4).setting(),
+         .number("glowIntensity", "Glow Intensity", 0.6, 0...1).limited(0...1).setting()]
     }
     package override class var outputSpecs: [PortSpec] { [.image("image", "Image")] }
 
@@ -25,11 +34,43 @@ package final class ImageImporterPatch: Patch {
         return data.utf8.count / 4 * 3
     }
 
+    package override func showsSetting(_ key: String) -> Bool {
+        let preset = Int(params["preset"]?.number ?? 0)
+        switch key {
+        case "path", "embed": return preset == 0
+        case "thickness": return [2, 5, 8, 9].contains(preset) // Ring, Frame, Cross, Line
+        case "glow": return preset > 0
+        case "glowIntensity": return preset > 0 && (params["glow"]?.number ?? 0) > 0
+        default: return true
+        }
+    }
+
     private var loadedPath: String?
     private var loadedData: String?
+    private var loadedPreset: String?
     private var texture: MTLTexture?
+    /// Width and height in pixels of the preset images.
+    package static let presetSize = 512
 
     package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        let preset = i.int("preset")
+        if preset > 0, preset < Self.presets.count {
+            let key = "\(preset)|\(i.number("thickness"))|\(i.number("glow"))|\(i.number("glowIntensity"))"
+            if key != loadedPreset {
+                loadedPreset = key
+                loadedPath = nil
+                loadedData = nil
+                texture = Self.drawPreset(preset, thickness: i.float("thickness"), glow: i.float("glow"),
+                                          glowIntensity: i.float("glowIntensity"), ctx)
+                setStatus(nil)
+            }
+            return ["image": .image(texture)]
+        }
+        if loadedPreset != nil {
+            loadedPreset = nil
+            texture = nil
+        }
+
         // An embedded image wins over the file, so the composition works without it.
         if i.bool("embed"), case let data = i.string("data"), !data.isEmpty {
             if data != loadedData {
@@ -71,6 +112,32 @@ package final class ImageImporterPatch: Patch {
             }
         }
         return ["image": .image(texture)]
+    }
+
+    /// Matches `PresetUniforms` in ShaderLibrary.
+    private struct PresetUniforms { var shape: Int32; var thickness: Float; var glow: Float; var glowIntensity: Float; var pixels: Float }
+
+    private static func drawPreset(_ shape: Int, thickness: Float, glow: Float, glowIntensity: Float,
+                                   _ ctx: EvalContext) -> MTLTexture? {
+        guard let pipeline = ctx.resources.presetPipeline else { return nil }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: presetSize,
+                                                            height: presetSize, mipmapped: false)
+        desc.usage = [.renderTarget, .shaderRead]
+        desc.storageMode = .private
+        guard let target = ctx.device.makeTexture(descriptor: desc) else { return nil }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .dontCare
+        pass.colorAttachments[0].storeAction = .store
+        guard let enc = ctx.commandBuffer.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+        enc.label = "Image Importer preset"
+        enc.setRenderPipelineState(pipeline)
+        var u = PresetUniforms(shape: Int32(shape), thickness: max(0.01, thickness), glow: max(0, glow),
+                               glowIntensity: min(max(glowIntensity, 0), 1), pixels: Float(presetSize))
+        enc.setFragmentBytes(&u, length: MemoryLayout<PresetUniforms>.stride, index: 0)
+        enc.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        enc.endEncoding()
+        return target
     }
 }
 

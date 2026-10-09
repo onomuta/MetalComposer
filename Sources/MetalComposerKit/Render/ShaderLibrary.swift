@@ -62,6 +62,62 @@ package enum ShaderLibrary {
         return float4(1.0, 1.0, 1.0, atlas.sample(s, in.uv).r);
     }
 
+    // Image Importer presets: white shapes drawn from signed distances (negative inside), with an
+    // optional glow around them. The shape spans -1…1 and shrinks to leave room for the glow.
+    struct PresetUniforms { int shape; float thickness; float glow; float glowIntensity; float pixels; };
+
+    static float sd_box(float2 p, float2 b) {
+        float2 d = abs(p) - b;
+        return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0);
+    }
+    static float sd_triangle(float2 p) { // equilateral, pointing up, centered in -1…1
+        p.y += 0.25;
+        const float k = sqrt(3.0), r = 0.866;
+        p.x = abs(p.x) - r;
+        p.y = p.y + r / k;
+        if (p.x + k * p.y > 0.0) p = float2(p.x - k * p.y, -k * p.x - p.y) / 2.0;
+        p.x -= clamp(p.x, -2.0 * r, 0.0);
+        return -length(p) * sign(p.y);
+    }
+    static float sd_star(float2 p, float rf) { // five points, inner radius rf
+        const float2 k1 = float2(0.809016994375, -0.587785252292);
+        const float2 k2 = float2(-k1.x, k1.y);
+        p.x = abs(p.x);
+        p -= 2.0 * max(dot(k1, p), 0.0) * k1;
+        p -= 2.0 * max(dot(k2, p), 0.0) * k2;
+        p.x = abs(p.x);
+        p.y -= 1.0;
+        float2 ba = rf * float2(-k1.y, k1.x) - float2(0.0, 1.0);
+        float h = clamp(dot(p, ba) / dot(ba, ba), 0.0, 1.0);
+        return length(p - ba * h) * sign(p.y * ba.x - p.x * ba.y);
+    }
+
+    fragment float4 preset_fragment(FSOut in [[stage_in]], constant PresetUniforms& u [[buffer(0)]]) {
+        float scale = 1.0 + u.glow;
+        float2 p = (in.uv * 2.0 - 1.0) * scale;
+        float t = u.thickness;
+        float d;
+        switch (u.shape) {
+            case 1: d = length(p) - 1.0; break;                                    // Circle
+            case 2: d = abs(length(p) - (1.0 - t * 0.5)) - t * 0.5; break;         // Ring
+            case 3: return float4(1.0, 1.0, 1.0, pow(saturate(1.0 - length(p)), 2.0)); // Soft Dot
+            case 4: d = sd_box(p, float2(1.0)); break;                             // Square
+            case 5: d = abs(sd_box(p, float2(1.0 - t * 0.5))) - t * 0.5; break;   // Frame
+            case 6: d = sd_triangle(p); break;                                     // Triangle
+            case 7: d = sd_star(p + float2(0.0, 0.095), 0.45); break;              // Star (centered top to bottom)
+            case 8: d = min(sd_box(p, float2(1.0, t * 0.5)), sd_box(p, float2(t * 0.5, 1.0))); break; // Cross
+            default: d = sd_box(p, float2(1.0, t * 0.5)); break;                   // Line
+        }
+        // Antialiased edge one pixel wide; the glow fades from the edge out to `glow` (shape units).
+        float pixel = 2.0 * scale / u.pixels;
+        float alpha = saturate(0.5 - d / pixel);
+        if (u.glow > 0.0) {
+            float g = saturate(1.0 - max(d, 0.0) / u.glow);
+            alpha = max(alpha, u.glowIntensity * g * g * g);
+        }
+        return float4(1.0, 1.0, 1.0, alpha);
+    }
+
     // Triangle meshes (Cylinder): model-space vertices, shaded like sprites (sprite_fragment reads
     // the color and texture flag from a QuadUniforms whose corners are unused).
     struct MeshVertex { float4 position; float2 uv; };

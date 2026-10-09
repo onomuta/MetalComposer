@@ -234,7 +234,7 @@
 "Inside a macro: adds an output port to the macro. Its name is the port name." = "マクロの中に置くと、マクロに出力ポートが増えます。パッチの名前がポート名になります。";
 "Inside an Iterator: current index, count and position (0…1)." = "Iterator の中で使います。今の番号、回数、位置（0〜1）を出力します。";
 "Keeps a value inside a range by clamping, wrapping or mirroring." = "値を範囲内に収めます（切り詰め、折り返し、反転）。";
-"Loads an image file (PNG, JPEG, HEIC…) into a texture." = "画像ファイル（PNG、JPEG、HEIC など）を読み込みます。";
+"Loads an image file (PNG, JPEG, HEIC…) into a texture, or makes a white preset shape with an optional glow." = "画像ファイル（PNG、JPEG、HEIC など）を読み込みます。白い図形のプリセット（グロー付きも可）も使えます。";
 "Low frequency oscillator driven by patch time." = "パッチの時間で動く低周波発振器（LFO）。";
 "Maps a value from one range to another." = "値をある範囲から別の範囲に変換します。";
 "Mouse position over the viewer in composition units." = "Viewer 上のマウス（指）の位置。作品の座標で出力します。";

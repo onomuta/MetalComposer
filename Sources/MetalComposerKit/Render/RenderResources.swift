@@ -37,6 +37,15 @@ package final class RenderResources {
     /// Text Image then draws on the CPU).
     package private(set) lazy var textRenderer: TextRenderer? = try? TextRenderer(device: device, library: library)
 
+    /// Draws the Image Importer presets (straight-alpha white shapes) into an RGBA texture.
+    package private(set) lazy var presetPipeline: MTLRenderPipelineState? = {
+        let d = MTLRenderPipelineDescriptor()
+        d.vertexFunction = library.makeFunction(name: "fullscreen_vertex")
+        d.fragmentFunction = library.makeFunction(name: "preset_fragment")
+        d.colorAttachments[0].pixelFormat = .rgba8Unorm
+        return try? device.makeRenderPipelineState(descriptor: d)
+    }()
+
     /// Folder that relative file paths (Image Importer) are resolved against: the composition's folder.
     package var baseDirectory: URL?
 
