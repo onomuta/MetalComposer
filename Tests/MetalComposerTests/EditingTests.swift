@@ -110,3 +110,26 @@ extension EditingTests {
         XCTAssertEqual(refreshes, 3, "changing the number of inputs changes the ports")
     }
 }
+
+extension EditingTests {
+    /// ⌘↩ moves the cursor to the library's search field; only from the search field does it close the library.
+    func testFindPatchFocusesTheSearchBeforeClosing() {
+        let state = AppState()
+        state.showLibrary = true
+        state.librarySearchFocused = false
+        let requests = state.librarySearchRequest
+        state.findPatch()
+        XCTAssertTrue(state.showLibrary, "open library, cursor elsewhere: stays open")
+        XCTAssertEqual(state.librarySearchRequest, requests + 1, "and asks for the search field")
+
+        state.librarySearchFocused = true // the library reports the focus
+        let closes = state.libraryCloseRequest
+        state.findPatch()
+        XCTAssertFalse(state.showLibrary)
+        XCTAssertEqual(state.libraryCloseRequest, closes + 1)
+
+        state.findPatch()
+        XCTAssertTrue(state.showLibrary, "closed library: opens it")
+        XCTAssertEqual(state.librarySearchRequest, requests + 2)
+    }
+}

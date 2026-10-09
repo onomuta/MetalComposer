@@ -221,7 +221,7 @@ private struct LibraryCommands: View {
         .keyboardShortcut("v", modifiers: [.command, .option])
         Button(loc(state.showLibrary ? "Hide Patch Library" : "Show Patch Library")) { state.showLibrary.toggle() }
             .keyboardShortcut("l", modifiers: [.command, .option])
-        Button(loc(state.showLibrary ? "Close Patch Library" : "Find Patch…")) { state.findPatch() }
+        Button(loc(state.librarySearchFocused ? "Close Patch Library" : "Find Patch…")) { state.findPatch() }
             .keyboardShortcut(.return, modifiers: .command)
     }
 }

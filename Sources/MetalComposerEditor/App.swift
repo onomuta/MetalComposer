@@ -28,6 +28,10 @@ final class AppState: ObservableObject {
     let exporter = MovieExporter()
     /// Incremented to ask the library to focus its search field.
     @Published var librarySearchRequest = 0
+    /// Incremented to ask the floating library (compact and phone layouts) to close.
+    @Published var libraryCloseRequest = 0
+    /// Whether the library's search field has the keyboard focus (reported by the library).
+    @Published var librarySearchFocused = false
     /// A problem to show the user (iOS shows it as an alert; the Mac uses NSAlert directly).
     @Published var alert: AppAlert?
     var keyMonitor: Any?
@@ -63,13 +67,16 @@ final class AppState: ObservableObject {
             .sink { [renderer] _ in renderer.parameters.values = [:] }
     }
 
-    /// ⌘↩ toggles: opens the patch library with the cursor in its search field, or closes it
-    /// (handing the keyboard back to the graph) when it is already open.
+    /// ⌘↩: puts the cursor in the patch library's search field (opening the library if needed).
+    /// Pressed again while the search field has the cursor, it closes the library and hands the
+    /// keyboard back to the graph.
     func findPatch() {
-        if showLibrary {
+        if librarySearchFocused {
             showLibrary = false
+            libraryCloseRequest += 1
+            librarySearchFocused = false
             #if os(macOS)
-            NSApp.keyWindow?.makeFirstResponder(nil)
+            NSApp?.keyWindow?.makeFirstResponder(nil) // NSApp is nil outside a running app (tests)
             #endif
         } else {
             showLibrary = true
@@ -209,6 +216,7 @@ struct ContentView: View {
             .onChange(of: state.librarySearchRequest) { _, _ in
                 if self.layout != .columns { showFloatingLibrary = true }
             }
+            .onChange(of: state.libraryCloseRequest) { _, _ in showFloatingLibrary = false }
         }
         #if os(macOS)
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Mirage Composer")
@@ -246,6 +254,7 @@ struct ContentView: View {
             .overlay(alignment: .topLeading) {
                 if showFloatingLibrary {
                     LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
+                                onSearchFocusChange: { [state] in state.librarySearchFocused = $0 },
                                 onAddedFromSearch: { showFloatingLibrary = false },
                                 onAdd: { showFloatingLibrary = false })
                         .frame(width: libraryWidth, height: max(160, libraryHeight))
@@ -393,6 +402,7 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 if libraryShown {
                     LibraryView(composition: composition, searchRequest: state.librarySearchRequest,
+                                onSearchFocusChange: { [state] in state.librarySearchFocused = $0 },
                                 onAddedFromSearch: { state.showLibrary = false })
                         .frame(width: libraryWidth)
                     ColumnResizeHandle(width: $libraryWidth, range: 180...420)

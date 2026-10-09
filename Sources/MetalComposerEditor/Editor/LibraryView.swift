@@ -12,6 +12,9 @@ struct LibraryView: View {
     /// Changes whenever ⌘↩ asks for the search field.
     var searchRequest: Int
     /// Called after Return adds the highlighted patch (the window closes the library).
+    /// Called when the search field gains or loses the keyboard focus (⌘↩ closes the library
+    /// only when the search field has it).
+    var onSearchFocusChange: (Bool) -> Void = { _ in }
     var onAddedFromSearch: () -> Void = {}
     /// Where new patches go; nil places them near the middle of the editor.
     var insertionPoint: CGPoint?
@@ -96,9 +99,10 @@ struct LibraryView: View {
         // Patch names are English: type them without the IME, then go back to the previous input.
         .onChange(of: searchFocused) { _, focused in
             if focused { switchToASCIIInput() } else { restoreInputSource() }
+            onSearchFocusChange(focused)
         }
         // Adding a patch from the search closes the library, possibly before focus moves.
-        .onDisappear { restoreInputSource() }
+        .onDisappear { restoreInputSource(); onSearchFocusChange(false) }
         .onAppear { if searchRequest > 0 { focusSearch() } }
         .onChange(of: searchRequest) { _, _ in focusSearch() }
     }
