@@ -8,7 +8,7 @@ final class MCPServerTests: XCTestCase {
     private var nextID = 0
 
     override func setUpWithError() throws {
-        server = try MCPServer()
+        server = try MCPServer(support: nil) // never touch the real app settings or record
     }
 
     private func request(_ method: String, _ params: [String: Any] = [:]) throws -> [String: Any] {
@@ -148,7 +148,7 @@ final class MCPServerTests: XCTestCase {
         XCTAssertFalse(try tool("render", ["width": 32, "height": 18]).isError)
 
         // A folder allowed when the server starts.
-        let allowed = try MCPServer(imageFolders: [outside])
+        let allowed = try MCPServer(imageFolders: [outside], support: nil)
         server = allowed
         let other = try XCTUnwrap(try json(try tool("add_patch", ["type": "image-importer"]).content)["id"] as? String)
         XCTAssertFalse(try tool("set_params", ["patch": other, "values": ["path": outside.appendingPathComponent("green.png").path]]).isError)

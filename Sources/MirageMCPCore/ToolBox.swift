@@ -4,9 +4,12 @@ import MetalComposerKit
 /// The tools the server offers (ADR 0001, step 1), and their dispatch.
 final class ToolBox {
     private let session: Session
+    /// Settings and activity shared with the Mirage MCP app; nil to use neither (tests).
+    private let support: SupportFiles?
 
-    init(session: Session) {
+    init(session: Session, support: SupportFiles?) {
         self.session = session
+        self.support = support
     }
 
     // MARK: Definitions
@@ -81,10 +84,35 @@ final class ToolBox {
     // MARK: Dispatch
 
     /// Runs a tool. Failures come back as a tool result with `isError`, so the model can fix the call.
+    /// The app's settings are read first: while AI access is paused (or the settings can't be read),
+    /// every call is refused. Each call is added to the activity record.
     func call(name: String, arguments: [String: Any]) -> [String: Any] {
+        let (settings, problem) = support?.loadSettings() ?? (SupportFiles.Settings(), nil)
+        var entry = SupportFiles.Entry(time: Date(), process: ProcessInfo.processInfo.processIdentifier, tool: name,
+                                       arguments: SupportFiles.summarize(arguments), ok: false, message: "",
+                                       thumbnails: [], saved: nil)
+        defer { support?.record(entry) }
+        if settings.paused {
+            entry.message = problem ?? "AI access is paused in the Mirage MCP app."
+            return ["content": [Self.text(entry.message)], "isError": true]
+        }
+        session.settingsImageFolders = settings.imageFolders.map { URL(fileURLWithPath: ($0 as NSString).expandingTildeInPath) }
         do {
-            return ["content": try run(name, arguments), "isError": false]
+            let content = try run(name, arguments)
+            entry.ok = true
+            let texts = content.compactMap { $0["text"] as? String }
+            entry.message = String((texts.last ?? "").prefix(200))
+            if let support {
+                entry.thumbnails = content.compactMap { item in
+                    guard item["type"] as? String == "image", let b64 = item["data"] as? String,
+                          let png = Data(base64Encoded: b64) else { return nil }
+                    return support.thumbnail(of: png)
+                }
+            }
+            if name == "save_composition", let saved = session.fileURL { entry.saved = saved.path }
+            return ["content": content, "isError": false]
         } catch {
+            entry.message = String("\(error)".prefix(300))
             return ["content": [Self.text("\(error)")], "isError": true]
         }
     }

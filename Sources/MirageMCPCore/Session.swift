@@ -13,6 +13,8 @@ final class Session {
     private(set) var fileURL: URL?
     /// Folders Image Importer may read from, besides the composition's own folder (`--allow-images`).
     private let imageFolders: [URL]
+    /// More folders, from the Mirage MCP app's settings (re-read before every tool call).
+    var settingsImageFolders: [URL] = []
 
     /// Patches that would use the Mac's hardware outside the editor (the microphone).
     static let unavailableTypes: Set<String> = ["audio-input", "audio-spectrum"]
@@ -110,10 +112,11 @@ final class Session {
             throw ToolError("\(path) is relative: save the composition first (it is relative to the composition's folder)")
         }
         let resolved = url.standardizedFileURL.resolvingSymlinksInPath()
-        let folders = imageFolders + [fileURL?.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath()].compactMap { $0 }
+        let folders = imageFolders + settingsImageFolders.map { $0.standardizedFileURL.resolvingSymlinksInPath() }
+            + [fileURL?.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath()].compactMap { $0 }
         guard folders.contains(where: { resolved.path.hasPrefix($0.path.hasSuffix("/") ? $0.path : $0.path + "/") }) else {
             let allowed = folders.map(\.path)
-            throw ToolError("Image Importer may only read images in the composition's folder or folders allowed with --allow-images (\(allowed.isEmpty ? "none yet: save the composition first" : allowed.joined(separator: ", "))); \(resolved.path) is outside them")
+            throw ToolError("Image Importer may only read images in the composition's folder or folders allowed in the Mirage MCP app or with --allow-images (\(allowed.isEmpty ? "none yet: save the composition first" : allowed.joined(separator: ", "))); \(resolved.path) is outside them")
         }
         guard UTType(filenameExtension: resolved.pathExtension)?.conforms(to: .image) == true else {
             throw ToolError("\(resolved.lastPathComponent) is not an image file")

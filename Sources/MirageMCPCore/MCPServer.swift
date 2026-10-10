@@ -11,8 +11,9 @@ package final class MCPServer {
     private let tools: ToolBox
 
     /// `imageFolders`: folders Image Importer may read from besides the composition's folder.
-    package init(imageFolders: [URL] = []) throws {
-        tools = ToolBox(session: try Session(imageFolders: imageFolders))
+    /// `support`: the settings and activity record shared with the Mirage MCP app (nil for neither).
+    package init(imageFolders: [URL] = [], support: SupportFiles? = .standard) throws {
+        tools = ToolBox(session: try Session(imageFolders: imageFolders), support: support)
     }
 
     /// Folders given as `--allow-images <folder>` (repeatable).
