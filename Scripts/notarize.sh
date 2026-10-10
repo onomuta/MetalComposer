@@ -2,14 +2,15 @@
 # Notarizes and staples a Developer ID–signed build/Mirage Composer.app, then zips it.
 # (The keychain profile keeps its original name, MetalComposer.)
 #   ./Scripts/notarize.sh 0.1.0
+# For Mirage MCP: APP="build/Mirage MCP.app" ZIP_NAME=MirageMCP ./Scripts/notarize.sh 0.1.0
 # One-time setup (stores your Apple ID app-specific password in the keychain):
 #   xcrun notarytool store-credentials MetalComposer --apple-id <you@example.com> --team-id BWZ7Q5QLJ5
 set -e
 cd "$(dirname "$0")/.."
 VERSION=${1:?usage: notarize.sh <version>}
 PROFILE=${NOTARY_PROFILE:-MetalComposer}
-APP="build/Mirage Composer.app"
-ZIP="build/MirageComposer-$VERSION-macOS.zip"
+APP=${APP:-"build/Mirage Composer.app"}
+ZIP="build/${ZIP_NAME:-MirageComposer}-$VERSION-macOS.zip"
 
 ditto -c -k --keepParent "$APP" "$ZIP"
 xcrun notarytool submit "$ZIP" --keychain-profile "$PROFILE" --wait

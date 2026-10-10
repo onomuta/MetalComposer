@@ -170,17 +170,27 @@ player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer,
 
 ## AI から作品を作る（MCP サーバー）
 
-`mirage-mcp` は、Claude などの AI が作品を作って描けるようにする MCP サーバーです（設計は [docs/decisions/0001-mcp-server.md](docs/decisions/0001-mcp-server.md)）。エディタとは別の実行ファイルで、標準入出力で通信します（ネットワークは使いません）。macOS 専用です。
+`mirage-mcp` は、Claude などの AI が作品を作って描けるようにする MCP サーバーです（設計は [docs/decisions/0001-mcp-server.md](docs/decisions/0001-mcp-server.md) と [0002](docs/decisions/0002-mcp-companion-app.md)）。標準入出力で通信し、ネットワークは使いません。macOS 専用です。
+
+### Mirage MCP（管理アプリ）で使う
+
+`mirage-mcp` は、管理アプリ **Mirage MCP** の中に入っています。GitHub のリリースから `MirageMCP-<版>-macOS.zip` をダウンロードして展開し、`Mirage MCP.app` を「アプリケーション」フォルダに入れてください（Developer ID で署名し、公証済みです）。
+
+1. Mirage MCP を開き、「AI clients」で登録します。
+   - **Claude Desktop**：「Register…」を押します。書き込む内容を確認してから登録し、元の設定の控えを残します。登録後に Claude Desktop を再起動してください。
+   - **Claude Code**：`claude` コマンドが入っていれば「Register…」で登録できます。なければ表示されたコマンドをコピーして、ターミナルで実行します。
+2. 画像を使わせたいフォルダがあれば、「Image folders」で追加します。
+3. Claude に「パーティクルが噴き出す作品を作って ~/Documents/VJ/mcomp/fountain.mcomp に保存して」のように頼みます。
+4. Mirage MCP の「Activity」に、AI が呼んだ道具・描いた絵・保存した作品が出ます。保存した作品は「Open」で Mirage Composer で開けます。
+5. AI に操作させたくないときは、上のスイッチを切ります。切っている間、AI からの呼び出しはすべて断られます。
+
+### ソースからビルドする
 
 ```bash
-swift build -c release --product mirage-mcp
+./Scripts/bundle-mcp.sh release
 ```
 
-Claude Code に登録するには、次のように実行します（パスは `.build/release/mirage-mcp` の場所）。
-
-```bash
-claude mcp add mirage -- "$PWD/.build/release/mirage-mcp"
-```
+`build/Mirage MCP.app` ができます。`mirage-mcp` だけを使う場合は `swift build -c release --product mirage-mcp` でビルドし、Claude Code に `claude mcp add mirage -- "$PWD/.build/release/mirage-mcp"` で登録します。
 
 使える道具：
 
@@ -198,7 +208,7 @@ claude mcp add mirage -- "$PWD/.build/release/mirage-mcp"
 
 安全のため、AI ができることを絞っています。
 - 保存できるのは `.mcomp` ファイルだけです。既にあるファイルは、`overwrite` を指定したときだけ上書きします。
-- Image Importer が読めるのは、作品の保存先フォルダの中と、`--allow-images <フォルダ>` で許可したフォルダの中の画像だけです（例：`claude mcp add mirage -- "$PWD/.build/release/mirage-mcp" --allow-images ~/Documents/VJ`）。
+- Image Importer が読めるのは、作品の保存先フォルダの中と、Mirage MCP の「Image folders」（または `--allow-images <フォルダ>`）で許可したフォルダの中の画像だけです。
 - マイクを使う Audio Input と Audio Spectrum は使えません。
 - 1 回の描画が 15 秒を超えると打ち切ります。
 

@@ -93,6 +93,12 @@ ADR 0001 で、AI が作品を作って描ける MCP サーバー `mirage-mcp` �
 - 実物で確かめた：この Mac では Claude Desktop・Claude Code とも未登録と表示し、`claude` コマンドが見つからないため登録のコマンドを表示した。Claude Desktop の確認画面に書き込む内容が出ることを確かめ、取り消した（設定ファイルは変わっていない）。
 - テストでは一時ファイルだけを使う（ほかの設定やほかのサーバーの値が残ること、控えの数と権限、壊れたファイルを変えないこと、Claude Code の設定は読むだけなこと）。
 
+## 手順4の結果（2026-10-10）
+
+- `Scripts/notarize.sh` に `APP` と `ZIP_NAME` を足し、Mirage MCP も公証できるようにした。
+- 0.1.0 を Apple silicon と Intel の両方で動く形でビルドし、中の `mirage-mcp` とアプリを Developer ID で署名（hardened runtime）して公証した。`/Applications/Mirage MCP.app` に置き、そこから `mirage-mcp` が応答することを確かめた。
+- GitHub のリリースは、Mirage Composer の版と分けて `mirage-mcp-v0.1.0` のタグで出す。
+
 ## 影響
 
 - パッケージに、管理アプリの実行ファイルが 1 つ増える。Mirage Composer 本体、App Store 版、OnomFlow には影響しない。
