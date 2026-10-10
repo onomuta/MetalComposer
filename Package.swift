@@ -12,6 +12,8 @@ let package = Package(
         .executable(name: "MetalComposer", targets: ["MetalComposer"]),
         // MCP server that lets an AI build and render compositions (docs/decisions/0001-mcp-server.md).
         .executable(name: "mirage-mcp", targets: ["MirageMCP"]),
+        // Its settings and activity app, which bundles mirage-mcp (docs/decisions/0002-mcp-companion-app.md).
+        .executable(name: "MirageMCPApp", targets: ["MirageMCPApp"]),
     ],
     targets: [
         // Data model, patches, evaluation and Metal rendering.
@@ -39,6 +41,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "MirageMCP",
+            dependencies: ["MirageMCPCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .executableTarget(
+            name: "MirageMCPApp",
             dependencies: ["MirageMCPCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),

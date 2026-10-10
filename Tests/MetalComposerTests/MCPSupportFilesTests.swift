@@ -94,4 +94,41 @@ final class MCPSupportFilesTests: XCTestCase {
         try writeSettings(SupportFiles.Settings(imageFolders: [images.path]))
         XCTAssertFalse(try call(server, "set_params", ["patch": try XCTUnwrap(id), "values": ["path": path]]).isError)
     }
+
+    // MARK: What the app does with the files
+
+    func testAppSavesSettingsPrivately() throws {
+        try support.saveSettings(SupportFiles.Settings(imageFolders: ["/tmp/a"], paused: true))
+        XCTAssertEqual(support.loadSettings().settings, SupportFiles.Settings(imageFolders: ["/tmp/a"], paused: true))
+        XCTAssertNil(support.loadSettings().problem)
+        let permissions = try FileManager.default.attributesOfItem(atPath: support.settingsURL.path)[.posixPermissions] as? Int
+        XCTAssertEqual(permissions, 0o600)
+    }
+
+    func testTrimKeepsTheNewestEntriesAndTheirThumbnails() throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let server = try MCPServer(support: support)
+        _ = try call(server, "render", ["width": 32, "height": 18])
+        for _ in 0..<5 { _ = try call(server, "add_patch", ["type": "lfo"]) }
+        _ = try call(server, "render", ["width": 32, "height": 18])
+        let before = support.loadEntries()
+        XCTAssertEqual(before.count, 7)
+        let oldThumbnail = try XCTUnwrap(before.first?.thumbnails.first)
+        let newThumbnail = try XCTUnwrap(before.last?.thumbnails.first)
+
+        support.trimActivity(keep: 3)
+        let after = support.loadEntries()
+        XCTAssertEqual(after.map(\.tool), ["add_patch", "add_patch", "render"])
+        XCTAssertEqual(after, Array(before.suffix(3)), "kept entries are unchanged")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: support.thumbnailsFolder.appendingPathComponent(oldThumbnail).path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: support.thumbnailsFolder.appendingPathComponent(newThumbnail).path))
+
+        // New calls still append after a trim.
+        _ = try call(server, "add_patch", ["type": "lfo"])
+        XCTAssertEqual(support.loadEntries().count, 4)
+
+        support.clearActivity()
+        XCTAssertTrue(support.loadEntries().isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: support.thumbnailsFolder.path))
+    }
 }

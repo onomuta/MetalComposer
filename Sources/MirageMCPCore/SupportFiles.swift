@@ -108,6 +108,56 @@ package struct SupportFiles {
         return CGImageDestinationFinalize(dest) ? name : nil
     }
 
+    // MARK: For the app
+
+    /// Saves the settings (only the user can read them). mirage-mcp picks them up on its next call.
+    package func saveSettings(_ settings: Settings) throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                attributes: [.posixPermissions: 0o700])
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        try encoder.encode(settings).write(to: settingsURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
+    }
+
+    /// The recorded calls, oldest first. Lines that can't be read are skipped.
+    package func loadEntries() -> [Entry] {
+        guard let text = try? String(contentsOf: activityURL, encoding: .utf8) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return text.split(separator: "\n").compactMap { try? decoder.decode(Entry.self, from: Data($0.utf8)) }
+    }
+
+    /// Keeps the newest `keep` entries and the thumbnails they use; deletes the rest. A call recorded
+    /// by mirage-mcp while this runs can be lost (the record is a convenience, not an audit log).
+    package func trimActivity(keep: Int = 1000) {
+        let entries = loadEntries()
+        let kept = Array(entries.suffix(keep))
+        if kept.count < entries.count {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            var data = Data()
+            for entry in kept {
+                guard let line = try? encoder.encode(entry) else { continue }
+                data.append(line)
+                data.append(0x0A)
+            }
+            try? data.write(to: activityURL, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: activityURL.path)
+        }
+        let used = Set(kept.flatMap(\.thumbnails))
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: thumbnailsFolder.path)) ?? [] where !used.contains(name) {
+            try? FileManager.default.removeItem(at: thumbnailsFolder.appendingPathComponent(name))
+        }
+    }
+
+    /// Deletes the whole record and its thumbnails.
+    package func clearActivity() {
+        try? FileManager.default.removeItem(at: activityURL)
+        try? FileManager.default.removeItem(at: thumbnailsFolder)
+    }
+
     /// Arguments for the record: compact JSON, long strings shortened, the whole capped.
     static func summarize(_ arguments: [String: Any]) -> String {
         func shorten(_ value: Any) -> Any {
