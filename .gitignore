@@ -7,3 +7,4 @@ iOS/Player/Info.plist
 Mac/Info.plist
 iOS/AppStore/Raw/
 Scripts/promo/*.mp4
+.mcp.json

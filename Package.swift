@@ -10,6 +10,8 @@ let package = Package(
         // The editor UI, shared by the Mac app and the iPad app.
         .library(name: "MetalComposerEditor", targets: ["MetalComposerEditor"]),
         .executable(name: "MetalComposer", targets: ["MetalComposer"]),
+        // MCP server that lets an AI build and render compositions (docs/decisions/0001-mcp-server.md).
+        .executable(name: "mirage-mcp", targets: ["MirageMCP"]),
     ],
     targets: [
         // Data model, patches, evaluation and Metal rendering.
@@ -29,9 +31,20 @@ let package = Package(
             dependencies: ["MetalComposerEditor"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
+        // The MCP server's protocol handling and tools (a separate target so tests can use them).
+        .target(
+            name: "MirageMCPCore",
+            dependencies: ["MetalComposerKit"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .executableTarget(
+            name: "MirageMCP",
+            dependencies: ["MirageMCPCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
         .testTarget(
             name: "MetalComposerTests",
-            dependencies: ["MetalComposerKit", "MetalComposerEditor"],
+            dependencies: ["MetalComposerKit", "MetalComposerEditor", "MirageMCPCore"],
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

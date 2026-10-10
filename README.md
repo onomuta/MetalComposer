@@ -168,6 +168,40 @@ player.encode(into: layerTexture, time: layerTime, commandBuffer: commandBuffer,
 - **iOS**：エンジンは iOS 17 以降でも動きます。マイクを使う作品があるなら、Info.plist に `NSMicrophoneUsageDescription` が必要です。
 - **ファイル形式**：エンジンより新しい形式の作品を読もうとすると、読み込みの段階でエラーになります（`CompositionPlayer.supportedFormatVersion`）。
 
+## AI から作品を作る（MCP サーバー）
+
+`mirage-mcp` は、Claude などの AI が作品を作って描けるようにする MCP サーバーです（設計は [docs/decisions/0001-mcp-server.md](docs/decisions/0001-mcp-server.md)）。エディタとは別の実行ファイルで、標準入出力で通信します（ネットワークは使いません）。macOS 専用です。
+
+```bash
+swift build -c release --product mirage-mcp
+```
+
+Claude Code に登録するには、次のように実行します（パスは `.build/release/mirage-mcp` の場所）。
+
+```bash
+claude mcp add mirage -- "$PWD/.build/release/mirage-mcp"
+```
+
+使える道具：
+
+| 道具 | 内容 |
+| --- | --- |
+| `list_patches` | パッチの一覧。`types` を渡すと入出力（キー、型、既定値、範囲、メニューの選択肢）も返します |
+| `new_composition` | 新しい作品を始めます（黒の Clear 入り） |
+| `add_patch` | パッチを置きます。`parent` にマクロの ID を渡すとその中に置きます |
+| `connect` | 出力を入力につなぎます |
+| `set_params` | 入力の値を設定します。色は `[r, g, b, a]` か `"#RRGGBB"`、メニューは選択肢の名前で指定できます |
+| `render` | 指定した時刻の絵を PNG で返します（問題の一覧付き） |
+| `save_composition` | `.mcomp` に保存します。エディタで開いて手直しできます |
+
+作品はサーバーのメモリ上で編集し、保存したときにファイルに書き込みます。エディタで開いている作品を外から書き換えても、エディタは自動では読み直しません。
+
+安全のため、AI ができることを絞っています。
+- 保存できるのは `.mcomp` ファイルだけです。既にあるファイルは、`overwrite` を指定したときだけ上書きします。
+- Image Importer が読めるのは、作品の保存先フォルダの中と、`--allow-images <フォルダ>` で許可したフォルダの中の画像だけです（例：`claude mcp add mirage -- "$PWD/.build/release/mirage-mcp" --allow-images ~/Documents/VJ`）。
+- マイクを使う Audio Input と Audio Spectrum は使えません。
+- 1 回の描画が 15 秒を超えると打ち切ります。
+
 ## iOS 版（Mirage Composer）
 
 `iOS/` に、iPhone／iPad 版があります。`.mcomp` の再生と、Mac と同じエディタでの編集ができます。Xcode プロジェクトは [XcodeGen](https://github.com/yonaskolb/XcodeGen) で作ります。
