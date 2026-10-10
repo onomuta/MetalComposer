@@ -85,6 +85,14 @@ ADR 0001 で、AI が作品を作って描ける MCP サーバー `mirage-mcp` �
 - `Scripts/bundle-mcp.sh` で `build/Mirage MCP.app` を作る。`Contents/MacOS/mirage-mcp` を同梱し、署名するときは中の `mirage-mcp` を先に、アプリを後に署名する（入れ物の権限はなし）。
 - 実物で確かめた：同梱の `mirage-mcp` で作った記録（成功・失敗・見本・保存）がウィンドウに出る。スイッチを切ると `mirage-mcp` が断り、その断りも記録に出る。
 
+## 手順3の結果（2026-10-10）
+
+- アプリに「AI clients」の欄を足した。Claude Desktop と Claude Code ごとに、登録状態（登録済み・未登録・別の場所の mirage-mcp が登録済み・設定が読めない）と、登録・更新・解除のボタンを出す。
+- **Claude Desktop**：`claude_desktop_config.json` の `mcpServers.mirage` だけを書き換える。押すと、書き込む内容（JSON）を見せて確認する。書く直前に読み直し、元のファイルをサポートフォルダの `backups/` に 0600 で写してから（最新 5 つまで）、元と同じ権限で一度に書く。読めない（壊れた）ファイルには書かない。反映には Claude Desktop の再起動が要ることを表示する。
+- **Claude Code**：`~/.claude.json` は登録状態を見るためだけに読み、書かない。`claude` コマンドが決まった場所（`~/.local/bin`、`~/.claude/local`、`/opt/homebrew/bin`、`/usr/local/bin`）にあれば、実行するコマンドを見せて確認してから `claude mcp add --scope user` を実行する（別の場所で登録済みなら先に `remove`）。ほかのアプリの中にある `claude`（Claude のデスクトップアプリの中のものなど）は使わない。見つからなければ、そのコマンドを表示してコピーできるようにする。
+- 実物で確かめた：この Mac では Claude Desktop・Claude Code とも未登録と表示し、`claude` コマンドが見つからないため登録のコマンドを表示した。Claude Desktop の確認画面に書き込む内容が出ることを確かめ、取り消した（設定ファイルは変わっていない）。
+- テストでは一時ファイルだけを使う（ほかの設定やほかのサーバーの値が残ること、控えの数と権限、壊れたファイルを変えないこと、Claude Code の設定は読むだけなこと）。
+
 ## 影響
 
 - パッケージに、管理アプリの実行ファイルが 1 つ増える。Mirage Composer 本体、App Store 版、OnomFlow には影響しない。

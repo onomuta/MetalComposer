@@ -43,6 +43,13 @@ final class MCPStore: ObservableObject {
     /// The server inside this app, which AI clients should start.
     let serverURL: URL? = Bundle.main.url(forAuxiliaryExecutable: "mirage-mcp")
 
+    // Registration with AI clients (ADR 0002, step 3).
+    lazy var desktop = ClaudeDesktopConfig.standard(backups: support.folder.appendingPathComponent("backups", isDirectory: true))
+    let code = ClaudeCode.standard
+    @Published private(set) var desktopStatus = RegistrationStatus.notRegistered
+    @Published private(set) var codeStatus = RegistrationStatus.notRegistered
+    @Published var notice: String?
+
     private var lastActivityChange: Date?
     private var timer: Timer?
 
@@ -55,6 +62,39 @@ final class MCPStore: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.reloadIfChanged() }
         }
+        refreshRegistrations()
+    }
+
+    func refreshRegistrations() {
+        guard let server = serverURL?.path else { return }
+        desktopStatus = desktop.status(server: server)
+        codeStatus = code.status(server: server)
+    }
+
+    func registerDesktop(_ register: Bool) {
+        guard let server = serverURL?.path else { return }
+        do {
+            let backup = register ? try desktop.register(server: server) : try desktop.unregister()
+            notice = (register ? "Registered with Claude Desktop." : "Removed from Claude Desktop.")
+                + " Quit and reopen Claude Desktop to apply it."
+                + (backup.map { " The previous settings were copied to \($0.path)." } ?? "")
+        } catch {
+            self.error = "Could not change Claude Desktop's settings: \(error.localizedDescription)"
+        }
+        refreshRegistrations()
+    }
+
+    func registerCode(_ register: Bool) {
+        guard let server = serverURL?.path else { return }
+        do {
+            // An existing registration (another path) is removed first: `claude mcp add` won't replace it.
+            if codeStatus != .notRegistered { _ = try? code.run(register: false, server: server) }
+            if register { _ = try code.run(register: true, server: server) }
+            notice = register ? "Registered with Claude Code. New Claude Code sessions can use it." : "Removed from Claude Code."
+        } catch {
+            self.error = "claude mcp failed: \(error.localizedDescription)"
+        }
+        refreshRegistrations()
     }
 
     var paused: Bool { settings.paused || settingsProblem != nil }
@@ -109,6 +149,8 @@ final class MCPStore: ObservableObject {
 struct ContentView: View {
     @ObservedObject var store: MCPStore
     @State private var confirmClear = false
+    @State private var confirmDesktop: Bool?
+    @State private var confirmCode: Bool?
 
     var body: some View {
         Form {
@@ -131,6 +173,39 @@ struct ContentView: View {
                         Text(url.path).font(.caption.monospaced()).textSelection(.enabled).lineLimit(2)
                     } else {
                         Text("Not bundled (run the app built by Scripts/bundle-mcp.sh)").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            if let server = store.serverURL?.path {
+                Section {
+                    registrationRow("Claude Desktop", status: store.desktopStatus,
+                                    register: { confirmDesktop = true }, remove: { confirmDesktop = false })
+                    registrationRow("Claude Code", status: store.codeStatus,
+                                    register: store.code.cli == nil ? nil : { confirmCode = true },
+                                    remove: store.code.cli == nil ? nil : { confirmCode = false })
+                    if store.code.cli == nil {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Claude Code's `claude` command wasn't found. Run this in Terminal to register:")
+                                .font(.caption).foregroundStyle(.secondary)
+                            HStack {
+                                Text(ClaudeCode.addCommand(server: server)).font(.caption.monospaced()).textSelection(.enabled)
+                                Spacer()
+                                Button("Copy") {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(ClaudeCode.addCommand(server: server), forType: .string)
+                                }
+                            }
+                        }
+                    }
+                    if let notice = store.notice {
+                        Text(notice).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                } header: {
+                    HStack {
+                        Text("AI clients")
+                        Spacer()
+                        Button("Refresh") { store.refreshRegistrations() }.controlSize(.small)
                     }
                 }
             }
@@ -181,10 +256,74 @@ struct ContentView: View {
         } message: {
             Text("This deletes the recorded tool calls and render thumbnails. Saved compositions are not touched.")
         }
+        .alert(confirmDesktop == true ? "Register with Claude Desktop?" : "Remove from Claude Desktop?",
+               isPresented: Binding(get: { confirmDesktop != nil }, set: { if !$0 { confirmDesktop = nil } })) {
+            Button(confirmDesktop == true ? "Register" : "Remove") {
+                if let register = confirmDesktop { store.registerDesktop(register) }
+                confirmDesktop = nil
+            }
+            Button("Cancel", role: .cancel) { confirmDesktop = nil }
+        } message: {
+            Text(desktopChangeDescription)
+        }
+        .alert(confirmCode == true ? "Register with Claude Code?" : "Remove from Claude Code?",
+               isPresented: Binding(get: { confirmCode != nil }, set: { if !$0 { confirmCode = nil } })) {
+            Button(confirmCode == true ? "Register" : "Remove") {
+                if let register = confirmCode { store.registerCode(register) }
+                confirmCode = nil
+            }
+            Button("Cancel", role: .cancel) { confirmCode = nil }
+        } message: {
+            Text("This runs:\n" + (confirmCode == true
+                ? ClaudeCode.addCommand(server: store.serverURL?.path ?? "")
+                : ClaudeCode.removeCommand)
+                + "\n\nClaude Code's own settings file is not edited by Mirage MCP.")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            store.refreshRegistrations()
+        }
         .alert("Mirage MCP", isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
             Button("OK") { store.error = nil }
         } message: {
             Text(store.error ?? "")
+        }
+    }
+
+    private var desktopChangeDescription: String {
+        let path = store.desktop.url.path
+        if confirmDesktop == true {
+            let entry = ClaudeDesktopConfig.entry(server: store.serverURL?.path ?? "")
+            let json = (try? JSONSerialization.data(withJSONObject: ["mirage": entry], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]))
+                .map { String(decoding: $0, as: UTF8.self) } ?? ""
+            return "In \(path), only mcpServers.mirage is set to:\n\(json)\n\nEverything else stays as it is. The current file is copied first. Restart Claude Desktop afterwards."
+        }
+        return "In \(path), only mcpServers.mirage is removed. Everything else stays as it is. The current file is copied first."
+    }
+
+    @ViewBuilder
+    private func registrationRow(_ name: String, status: RegistrationStatus,
+                                 register: (() -> Void)?, remove: (() -> Void)?) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name)
+                switch status {
+                case .registered:
+                    Label("Registered", systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green)
+                case .notRegistered:
+                    Text("Not registered").font(.caption).foregroundStyle(.secondary)
+                case .otherPath(let path):
+                    Text("Registered with another copy: \(path)").font(.caption).foregroundStyle(.orange).lineLimit(2)
+                case .unknown(let reason):
+                    Text(reason).font(.caption).foregroundStyle(.red)
+                }
+            }
+            Spacer()
+            if let register, status != .registered {
+                Button(status == .notRegistered ? "Register…" : "Update…", action: register)
+            }
+            if let remove, status != .notRegistered {
+                Button("Remove…", action: remove)
+            }
         }
     }
 
