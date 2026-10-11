@@ -93,6 +93,22 @@ final class MCPServerTests: XCTestCase {
         XCTAssertFalse(try tool("connect", ["from": lfo, "output": "value", "to": board, "input": "x"]).isError)
     }
 
+    func testSettingsApplyBeforeTheValuesTheyShape() throws {
+        // Inputs and Type add the ports i2, i3 and make them colors, in the same call that sets them.
+        let mux = try json(try tool("add_patch", ["type": "multiplexer", "values": [
+            "count": 4, "type": "Color", "i0": "#FF0000", "i3": "#00FF00"]]).content)
+        let inputs = try XCTUnwrap(mux["inputs"] as? [[String: Any]])
+        func value(_ key: String) -> [Double]? { inputs.first { $0["key"] as? String == key }?["value"] as? [Double] }
+        XCTAssertEqual(value("i0"), [1, 0, 0, 1], "a hex string is read as a color")
+        XCTAssertEqual(value("i3"), [0, 1, 0, 1])
+
+        // A mistake after the settings still changes nothing.
+        let id = try XCTUnwrap(mux["id"] as? String)
+        XCTAssertTrue(try tool("set_params", ["patch": id, "values": ["count": 2, "i3": "#0000FF"]]).isError)
+        let again = try json(try tool("set_params", ["patch": id, "values": ["i3": "#0000FF"]]).content)
+        XCTAssertEqual(again["i3"] as? [Double], [0, 0, 1, 1], "Inputs was not cut back to 2")
+    }
+
     func testListsPatchesAndTheirPorts() throws {
         let all = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(try XCTUnwrap(try tool("list_patches", [:]).content.first?["text"] as? String).utf8)) as? [[String: Any]])
         XCTAssertTrue(all.contains { $0["type"] as? String == "particle-system" })

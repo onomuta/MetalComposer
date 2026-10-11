@@ -154,7 +154,21 @@ final class Session {
     }
 
     func setValues(_ values: [String: Any], on patch: Patch) throws {
-        // Check everything first, so a mistake changes nothing.
+        // Settings go first: some (a Multiplexer's Inputs and Type) add inputs or change their
+        // types, and the other values must be read against the inputs as they will be.
+        // A mistake anywhere changes nothing.
+        let isSetting = { (key: String) in patch.allInputs.contains { $0.key == key && !$0.isPort } }
+        let before = patch.params
+        do {
+            try resolveAndSet(values.filter { isSetting($0.key) }, on: patch)
+            try resolveAndSet(values.filter { !isSetting($0.key) }, on: patch)
+        } catch {
+            patch.params = before
+            throw error
+        }
+    }
+
+    private func resolveAndSet(_ values: [String: Any], on patch: Patch) throws {
         var resolved: [String: Value] = [:]
         for (key, raw) in values {
             guard let spec = patch.allInputs.first(where: { $0.key == key && !$0.hidden }) else {
