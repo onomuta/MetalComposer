@@ -53,6 +53,7 @@ VERSION=0.1.0 UNIVERSAL=1 SIGN_IDENTITY="Developer ID Application: Takao Onomura
 ## マクロ、Iterator、Render In Image
 
 - **Macro**：中に置いた **Macro Input／Macro Output** が、マクロのポートになります。ポート名はパッチ名、型はインスペクタで選びます。並び順は Y 座標の順です。中にコンシューマがあれば、マクロ自体がレイヤを持ちます。
+  - 型が Number の Macro Input は、**Limit Range** をオンにすると **Minimum／Maximum** を設定できます。マクロのインスペクタ（作品のトップならビューアの Parameters も）のスライダーがその範囲になり、つないだ値や組み込み先のアプリから渡された値も範囲内に収めます。組み込み先には `CompositionParameter.range` として伝わるので、MIDI のつまみなどを範囲に合わせて割り当てられます。
 - **Iterator**：中身を 1 フレームに N 回実行します。**Iterator Variables** で、現在のインデックス、回数、位置（0〜1）を取得できます。
 - **Render In Image**：中身を画面ではなくテクスチャに描画し、画像として出力します。出力を自分自身の画像入力につなぐと**フィードバック**になり、入力側には前フレームの画像が入ります（テクスチャ 2 枚を交互に使っています）。デモ「Feedback Trails」を参照してください。
 - **3D Transformation**：中で描画したものに、移動・回転・拡大縮小を 3D でかけます（回転は X→Y→Z の順）。入れ子にすると変換が掛け合わされるので、階層構造を作れます。

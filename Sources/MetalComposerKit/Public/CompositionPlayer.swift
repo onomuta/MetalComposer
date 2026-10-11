@@ -71,6 +71,9 @@ public struct CompositionParameter: Identifiable {
     public let name: String
     public let type: CompositionParameterType
     public let defaultValue: CompositionValue
+    /// For numbers with Limit Range on: the allowed range (values set outside it are clamped).
+    /// Hosts can map their controls (e.g. a MIDI knob) onto it.
+    public let range: ClosedRange<Double>?
     public var id: String { key }
 }
 
@@ -141,7 +144,8 @@ public final class CompositionPlayer {
             .sorted { $0.position.y < $1.position.y }
             .map { CompositionParameter(key: $0.portKey, name: $0.displayTitle,
                                         type: CompositionParameterType($0.portType),
-                                        defaultValue: CompositionValue($0.defaultValue)) }
+                                        defaultValue: CompositionValue($0.defaultValue),
+                                        range: $0.valueRange) }
     }
 
     /// Sets a parameter; it applies from the next `encode`. Unknown keys are ignored.

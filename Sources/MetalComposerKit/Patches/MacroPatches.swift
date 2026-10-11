@@ -53,18 +53,55 @@ package final class PublishedInputPatch: PublishedPortPatch {
     }
     package override var headerTitle: String { "▶ " + displayTitle }
 
-    /// A Default Value setting for types the inspector can edit. At the top of a composition these
-    /// inputs are the composition's parameters (see `CompositionPlayer`).
+    /// A Default Value setting for types the inspector can edit, and for numbers an optional
+    /// Minimum / Maximum. At the top of a composition these inputs are the composition's parameters
+    /// (see `CompositionPlayer`).
     package override var ownInputs: [PortSpec] {
         var specs = type(of: self).inputSpecs
+        if portType == .number {
+            specs += [PortSpec.bool("limitRange", "Limit Range", false).setting(),
+                      PortSpec.number("min", "Minimum", 0).setting(),
+                      PortSpec.number("max", "Maximum", 1).setting()]
+        }
         if portType != .image && portType != .structure {
-            specs.append(PortSpec(key: "default", name: "Default Value", type: portType, defaultValue: portType.defaultValue).setting())
+            var value = PortSpec(key: "default", name: "Default Value", type: portType, defaultValue: portType.defaultValue).setting()
+            value.range = valueRange
+            value.limits = valueRange
+            specs.append(value)
         }
         return specs
     }
 
+    package override func showsSetting(_ key: String) -> Bool {
+        key == "min" || key == "max" ? valueRange != nil : true
+    }
+
+    /// Minimum…Maximum, for Number ports with Limit Range on: the macro's slider (and a host's
+    /// control) spans it, and every value the port passes on is kept inside it.
+    package var valueRange: ClosedRange<Double>? {
+        guard portType == .number, params["limitRange"]?.bool == true else { return nil }
+        let a = params["min"]?.number ?? 0, b = params["max"]?.number ?? 1
+        return Swift.min(a, b)...Swift.max(a, b)
+    }
+
+    package override var defaultValue: Value { clamped(super.defaultValue) }
+
+    package override var publishedSpec: PortSpec {
+        var spec = super.publishedSpec
+        spec.range = valueRange
+        spec.limits = valueRange
+        return spec
+    }
+
+    /// The value kept inside Minimum…Maximum (numbers only; other values pass unchanged).
+    package func clamped(_ value: Value) -> Value {
+        guard let range = valueRange, case .number(let n) = value else { return value }
+        return .number(Swift.min(Swift.max(n, range.lowerBound), range.upperBound))
+    }
+
     package override func evaluate(_ inputs: Inputs, _ ctx: EvalContext) -> [String: Value] {
-        ["value": ctx.published[portKey] ?? defaultValue]
+        // Connected values and values set by a host are kept in range too, not just the default.
+        ["value": clamped(ctx.published[portKey] ?? defaultValue)]
     }
 }
 

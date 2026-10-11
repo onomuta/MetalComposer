@@ -105,7 +105,7 @@ private struct ParameterRow: View {
         let name = Text(input.displayTitle).fontWeight(isChanged ? .semibold : .regular)
         switch input.portType {
         case .number:
-            let number = Binding(get: { value.number }, set: { set(.number($0)) })
+            let number = Binding(get: { value.number }, set: { set(input.clamped(.number($0))) })
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
                     name
@@ -118,7 +118,7 @@ private struct ParameterRow: View {
                         .keyboardType(.numbersAndPunctuation)
                         #endif
                 }
-                Slider(value: number, in: Self.range(around: input.defaultValue.number, current: value.number))
+                Slider(value: number, in: input.valueRange ?? Self.range(around: input.defaultValue.number, current: value.number))
             }
         case .bool:
             Toggle(isOn: Binding(get: { value.bool }, set: { set(.bool($0)) })) { name }
@@ -134,7 +134,7 @@ private struct ParameterRow: View {
         }
     }
 
-    /// Macro Inputs have no range, so guess one from the default: 0…1 for defaults in it,
+    /// Without Limit Range, guess a range from the default: 0…1 for defaults in it,
     /// otherwise ± twice the default's size; widened to include a value typed outside it.
     private static func range(around defaultValue: Double, current: Double) -> ClosedRange<Double> {
         var lo = 0.0, hi = 1.0
