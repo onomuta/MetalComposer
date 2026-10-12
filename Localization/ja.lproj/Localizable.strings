@@ -246,6 +246,7 @@
 "Random string of a given length from the chosen characters. Same seed and time, same string." = "選んだ文字から、指定した長さのランダムな文字列を作ります。シードと時間が同じなら、同じ文字列になります。";
 "Random value that changes a given number of times per second." = "1 秒に指定した回数だけ変わるランダムな値。";
 "Renders a string into an image (white, tint it with Sprite color)." = "文字列を画像にします（白。Sprite の色で色を付けられます）。";
+"One character of a string by index, with the count and where Text Image places it, for letter-by-letter animation." = "文字列から Index 番目の 1 文字を取り出し、文字数と、Text Image で置かれる位置も出力します。1 文字ずつのアニメーションに使います。";
 "Renders its contents offscreen and outputs the image. Loop the output back in for feedback." = "中身を画面外に描いて、画像として出力します。出力を入力に戻すとフィードバックになります。";
 "Rounds a value, optionally to a multiple of a step." = "値を丸めます。指定した刻みの倍数にもできます。";
 "Routes the input to the output selected by Destination Index (0-based)." = "入力を、Destination Index（0 から数える）で選んだ出力に送ります。";

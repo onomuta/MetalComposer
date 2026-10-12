@@ -342,6 +342,7 @@ package enum PatchRegistry {
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,
         SmoothPatch.self, IntegratorPatch.self, CounterPatch.self, ConditionalPatch.self, LogicPatch.self, RangePatch.self, MapRangePatch.self, RoundPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,
+        TextCharactersPatch.self,
         RGBColorPatch.self, HSLColorPatch.self,
         CoreImageFilterPatch.self,
         // Consumers
