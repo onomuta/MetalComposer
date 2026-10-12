@@ -58,10 +58,11 @@ final class Renderer: NSObject, MTKViewDelegate {
               let commandBuffer = resources.queue.makeCommandBuffer() else { return }
 
         let clock = playback.tick()
-        let ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: clock.time,
+        var ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: clock.time,
                               deltaTime: clock.delta, viewportSize: view.drawableSize,
                               mouse: mouse, mouseDown: mouseDown,
                               published: parameters.published(for: composition), inspect: composition.selection)
+        ctx.host = parameters.host(for: composition)
         FrameRenderer.encodeFrame(graph: composition.root, context: ctx, pass: pass, targetSize: view.drawableSize)
         if mirrorCount > 0 { copyForMirrors(drawable.texture, commandBuffer) }
         commandBuffer.present(drawable)

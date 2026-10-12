@@ -142,6 +142,9 @@ package struct EvalContext {
     package let mouseDown: Bool
     /// Values of the enclosing macro's published inputs, keyed by port key.
     package var published: [String: Value] = [:]
+    /// Values the host app set for the whole composition (ONOM FLOW Input), keyed by host key.
+    /// Unlike `published`, they reach every macro unchanged.
+    package var host: [String: Value] = [:]
     /// Current iteration when evaluated inside an Iterator.
     package var iteration: (index: Int, count: Int)? = nil
     /// Patches to evaluate even when nothing consumes them (for the inspector).
@@ -335,6 +338,7 @@ package enum PatchRegistry {
         // Providers
         PatchTimePatch.self, MousePatch.self, RandomPatch.self, RandomStringPatch.self, NumberPatch.self,
         ImageImporterPatch.self, TextImagePatch.self, AudioInputPatch.self, AudioSpectrumPatch.self,
+        OnomFlowInputPatch.self,
         // Processors
         LFOPatch.self, InterpolationPatch.self, MathPatch.self, MathExpressionPatch.self,
         SmoothPatch.self, IntegratorPatch.self, CounterPatch.self, ConditionalPatch.self, LogicPatch.self, RangePatch.self, MapRangePatch.self, RoundPatch.self, MultiplexerPatch.self, DemultiplexerPatch.self,

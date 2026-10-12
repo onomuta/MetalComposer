@@ -97,8 +97,12 @@ public final class CompositionPlayer {
     }
 
     public let engine: MetalComposerEngine
-    /// Top-level Macro Input patches, top to bottom.
+    /// Top-level Macro Input patches, top to bottom; then, when the composition uses an ONOM FLOW Input
+    /// patch, the values that patch takes (BPM, Beat, Gain, Input 1–4, Text 1–2, Image 1–2, Main Color,
+    /// Sub Color), named the way ONOM FLOW sends them.
     public let parameters: [CompositionParameter]
+    /// Keys of the parameters that feed ONOM FLOW Input patches.
+    private let hostKeys: Set<String>
 
     private let graph = Graph()
     /// Patch types the file uses that this engine doesn't know; those patches are skipped.
@@ -140,12 +144,18 @@ public final class CompositionPlayer {
         self.baseDirectory = baseDirectory
         unknownPatchTypes = record.unknownPatchTypes
         graph.load(record)
-        parameters = graph.nodes.compactMap { $0 as? PublishedInputPatch }
+        let macroInputs = graph.nodes.compactMap { $0 as? PublishedInputPatch }
             .sorted { $0.position.y < $1.position.y }
             .map { CompositionParameter(key: $0.portKey, name: $0.displayTitle,
                                         type: CompositionParameterType($0.portType),
                                         defaultValue: CompositionValue($0.defaultValue),
                                         range: $0.valueRange) }
+        let hostValues = OnomFlowInputPatch.isUsed(in: graph) ? OnomFlowInputPatch.hostValues : []
+        parameters = macroInputs + hostValues.map {
+            CompositionParameter(key: $0.key, name: $0.name, type: CompositionParameterType($0.type),
+                                 defaultValue: CompositionValue($0.defaultValue), range: nil)
+        }
+        hostKeys = Set(hostValues.map(\.key))
     }
 
     /// Sets a parameter; it applies from the next `encode`. Unknown keys are ignored.
@@ -199,10 +209,12 @@ public final class CompositionPlayer {
         }
 
         var published: [String: Value] = [:]
-        for p in parameters { published[p.key] = values[p.key] ?? p.defaultValue.value }
-        let ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: time,
+        for p in parameters where !hostKeys.contains(p.key) { published[p.key] = values[p.key] ?? p.defaultValue.value }
+        var ctx = EvalContext(resources: resources, commandBuffer: commandBuffer, time: time,
                               deltaTime: lastTime.map { time - $0 } ?? 0, viewportSize: size,
                               mouse: pointer, mouseDown: isPointerDown, published: published)
+        // Only the values the host actually set: ONOM FLOW Input keeps its own defaults (and runs Beat) for the rest.
+        ctx.host = values.filter { hostKeys.contains($0.key) }
         lastTime = time
 
         let pass = MTLRenderPassDescriptor()

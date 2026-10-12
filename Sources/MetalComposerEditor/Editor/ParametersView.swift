@@ -25,6 +25,21 @@ final class ParameterValues: ObservableObject {
     func value(of input: PublishedInputPatch) -> Value {
         values[input.portKey]?.coerced(to: input.portType) ?? input.defaultValue
     }
+
+    /// The values an ONOM FLOW Input patch takes, when the composition uses one.
+    static func hostValues(of composition: Composition) -> [OnomFlowInputPatch.HostValue] {
+        OnomFlowInputPatch.isUsed(in: composition.root) ? OnomFlowInputPatch.hostValues : []
+    }
+
+    /// What the renderer passes to ONOM FLOW Input patches: only the values tried here, like a host sets them.
+    func host(for composition: Composition) -> [String: Value] {
+        guard !values.isEmpty else { return [:] }
+        var result: [String: Value] = [:]
+        for host in Self.hostValues(of: composition) {
+            if let value = values[host.key] { result[host.key] = value.coerced(to: host.type) }
+        }
+        return result
+    }
 }
 
 /// Opens the parameter panel; shown only when the composition has parameters.
@@ -34,7 +49,7 @@ struct ParametersButton: View {
     @State private var showing = false
 
     var body: some View {
-        if !ParameterValues.inputs(of: composition).isEmpty {
+        if !ParameterValues.inputs(of: composition).isEmpty || !ParameterValues.hostValues(of: composition).isEmpty {
             Button { showing.toggle() } label: { Image(systemName: "dial.medium") }
                 .help("Try the composition's parameters")
                 .accessibilityLabel("Parameters")
@@ -72,12 +87,26 @@ struct ParametersPanel: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
             Form {
-                Section {
-                    ForEach(inputs, id: \.id) { input in
-                        ParameterRow(input: input, parameters: parameters)
+                if !inputs.isEmpty {
+                    Section {
+                        ForEach(inputs, id: \.id) { input in
+                            ParameterRow(input: input, parameters: parameters)
+                        }
+                    } footer: {
+                        Text("Values here drive the viewer the way a host app would set them. They aren't saved with the composition.")
                     }
-                } footer: {
-                    Text("Values here drive the viewer the way a host app would set them. They aren't saved with the composition.")
+                }
+                let hostValues = ParameterValues.hostValues(of: composition)
+                if !hostValues.isEmpty {
+                    Section {
+                        ForEach(hostValues, id: \.key) { host in
+                            HostValueRow(host: host, parameters: parameters)
+                        }
+                    } header: {
+                        Text("ONOM FLOW")
+                    } footer: {
+                        Text("Try what ONOM FLOW would send to the ONOM FLOW Input patch. Without a value, Beat follows the BPM.")
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -89,6 +118,45 @@ struct ParametersPanel: View {
             composition.setParam(input, "default", parameters.value(of: input))
         }
         parameters.values = [:]
+    }
+}
+
+/// One value of the ONOM FLOW Input patch, tried the way ONOM FLOW sets it.
+private struct HostValueRow: View {
+    let host: OnomFlowInputPatch.HostValue
+    @ObservedObject var parameters: ParameterValues
+
+    private var value: Value { parameters.values[host.key]?.coerced(to: host.type) ?? host.defaultValue }
+    private var isChanged: Bool { parameters.values[host.key] != nil }
+    private func set(_ new: Value) { parameters.values[host.key] = new }
+
+    var body: some View {
+        let name = Text(host.name).fontWeight(isChanged ? .semibold : .regular)
+        switch host.type {
+        case .number:
+            let range: ClosedRange<Double> = host.key == "onom-flow.bpm" ? 20...300 : 0...1
+            let number = Binding(get: { value.number }, set: { set(.number(min(max($0, range.lowerBound), range.upperBound))) })
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    name
+                    Spacer()
+                    TextField("", value: number, format: .number.precision(.fractionLength(0...3)))
+                        .multilineTextAlignment(.trailing)
+                        .monospacedDigit()
+                        .frame(maxWidth: 90)
+                }
+                Slider(value: number, in: range)
+            }
+        case .color:
+            ColorPicker(selection: Binding(get: { ParameterRow.cgColor(value.color) }, set: { set(.color(ParameterRow.simd($0))) })) { name }
+        case .string:
+            LabeledContent {
+                TextField("", text: Binding(get: { value.string }, set: { set(.string($0)) }))
+                    .multilineTextAlignment(.trailing)
+            } label: { name }
+        default:
+            LabeledContent { Text("Set by the host app").foregroundStyle(.secondary) } label: { name }
+        }
     }
 }
 
@@ -146,11 +214,11 @@ private struct ParameterRow: View {
         return min(lo, current)...max(hi, current)
     }
 
-    private static func cgColor(_ c: SIMD4<Float>) -> CGColor {
+    static func cgColor(_ c: SIMD4<Float>) -> CGColor {
         CGColor(srgbRed: CGFloat(c.x), green: CGFloat(c.y), blue: CGFloat(c.z), alpha: CGFloat(c.w))
     }
 
-    private static func simd(_ color: CGColor) -> SIMD4<Float> {
+    static func simd(_ color: CGColor) -> SIMD4<Float> {
         let srgb = color.converted(to: CGColorSpace(name: CGColorSpace.sRGB)!, intent: .defaultIntent, options: nil) ?? color
         let c = (srgb.components ?? [0, 0, 0, 1]).map(Float.init)
         return c.count >= 4 ? SIMD4(c[0], c[1], c[2], c[3]) : SIMD4(c[0], c[0], c[0], c.last ?? 1)
