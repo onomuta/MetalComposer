@@ -4,7 +4,37 @@ Text for App Store Connect, in English (U.S.) and Japanese. The same text works 
 macOS version; each has its own fields in App Store Connect, so paste it into both.
 
 Limits: name and subtitle 30 characters, promotional text 170, keywords 100 (comma-separated, no
-spaces needed), description 4000.
+spaces needed), description 4000, What's New 4000.
+
+---
+
+## What's New
+
+Paste into "What's New in This Version" for both the iOS and the macOS version.
+
+### 1.0.1 — English (U.S.)
+
+```
+• Image Importer can now make white shapes without an image file: circle, ring, soft dot, square, frame, triangle, star, cross and line, with adjustable line width and glow.
+• New Text Characters patch: takes a string apart one character at a time and tells where Text Image places each one, for letter-by-letter animation inside an Iterator.
+• New ONOM FLOW Input patch: when a composition plays inside a VJ app that supports it, the patch receives that app's BPM, beat, gain, Input 1–4, texts, images and colors. In Mirage Composer you can try the values in the viewer's Parameters.
+• Macro Input can limit a number to a minimum and maximum. The macro's slider uses the range, and values are kept inside it.
+• Audio Input and Audio Spectrum react much faster and more smoothly.
+• ⌘↩ (Mac and hardware keyboards) moves to the patch search first; pressed again there, it closes the library.
+• .mcomp files have their own document icon.
+```
+
+### 1.0.1 — Japanese
+
+```
+• Image Importer で、画像ファイルなしで白い図形を使えるようになりました。円、リング、ソフトドット、四角、枠、三角、星、十字、線から選べ、線の太さとグローも調整できます。
+• 新しい Text Characters パッチ：文字列から 1 文字ずつ取り出し、Text Image で置かれる位置もわかります。Iterator と組み合わせて、文字を 1 つずつ動かせます。
+• 新しい ONOM FLOW Input パッチ：対応する VJ アプリで作品を再生したとき、そのアプリから BPM、ビート、ゲイン、Input 1〜4、テキスト、画像、色を受け取ります。Mirage Composer では、ビューアのパラメータで値を試せます。
+• Macro Input で、数値の最小値と最大値を設定できるようになりました。マクロのスライダーがその範囲になり、値も範囲内に収まります。
+• Audio Input と Audio Spectrum が、音に遅れず、なめらかに反応するようになりました。
+• ⌘↩（Mac と外付けキーボード）で、まずパッチ検索の欄に移ります。検索欄でもう一度押すとライブラリを閉じます。
+• .mcomp ファイルに専用のアイコンを付けました。
+```
 
 ---
 
