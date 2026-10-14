@@ -1,8 +1,14 @@
 # Mirage Composer
 
-Quartz Composer をモダンに作り直すことを目指した、macOS 向けのノードベース・リアルタイムビジュアル環境です。SwiftUI と Metal で書いています。
+Quartz Composer をモダンに作り直すことを目指した、Mac と iPhone／iPad 向けのノードベース・リアルタイムビジュアル環境です。SwiftUI と Metal で書いています。
 
 > **注記**：旧名は Metal Composer です。Apple Inc. とは関係のない、個人による非公式のプロジェクトです。Metal、Quartz Composer、macOS は Apple Inc. の商標です。
+
+## ダウンロード
+
+- **App Store（Mac、iPhone、iPad）**：[Mirage Composer](https://apps.apple.com/jp/app/mirage-composer/id6820437589)（無料）
+  - Mac 版の App Store ページは [こちら](https://apps.apple.com/jp/app/mirage-composer/id6820437589?platform=mac) です。1 度入手すれば、Mac と iPhone／iPad の両方で使えます。
+- **GitHub のリリース**：[Releases](https://github.com/onomuta/MetalComposer/releases) に、Developer ID で署名・公証した Mac 版（App Store 版より前の 0.x 系）と、AI から作品を作るための [Mirage MCP](#ai-から作品を作るmcp-サーバー) を置いています。
 
 ## ビルドと起動
 
@@ -231,6 +237,8 @@ open MirageComposer.xcodeproj
 
 - **MirageComposer-iOS**：iPhone／iPad 版。
 - **MirageComposer-macOS**：Mac App Store 版。`Mac/` の小さな起動コードから、`swift run` と同じエディタを起動します。App Sandbox が有効です（`Mac/MirageComposer.entitlements`）。開く・保存・書き出しは、ユーザーが選んだファイルに対してだけ行えます。そのため、Image Importer で選んだ画像や、キャンバスにドロップした画像は、iOS と同じく自動で作品に埋め込みます。
+
+1.0.0 は Mac 版・iOS 版とも [App Store](https://apps.apple.com/jp/app/mirage-composer/id6820437589) で公開しています（2026-10）。
 
 Xcode でそれぞれのスキームを選び、Product › Archive からアップロードします。バージョンは `project.yml` の `MARKETING_VERSION`（今は 1.0.0）と `CURRENT_PROJECT_VERSION`（ビルド番号。アップロードのたびに上げる）で決まります。プライバシーポリシーは https://onomuta.github.io/MetalComposer/privacy/ 、サポートページは https://onomuta.github.io/MetalComposer/support/ です（`docs/` を GitHub Pages で公開）。
 
