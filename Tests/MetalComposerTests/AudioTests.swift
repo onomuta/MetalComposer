@@ -44,3 +44,49 @@ final class AudioTests: XCTestCase {
         XCTAssertEqual(fallen, Float(exp(-1.0)), accuracy: 1e-5, "falls with the release time constant")
     }
 }
+
+/// The input ring and draw-time analysis (no microphone: samples are fed in directly).
+final class AudioResponseTests: XCTestCase {
+    func testRingKeepsTheNewestSamplesInOrder() {
+        let ring = SampleRing(capacity: 8)
+        XCTAssertEqual(ring.newest(4).samples, [0, 0, 0, 0], "zeros before anything arrives")
+        [Float](arrayLiteral: 1, 2, 3).withUnsafeBufferPointer { ring.write($0) }
+        XCTAssertEqual(ring.newest(4).samples, [0, 1, 2, 3])
+        (4...13).map(Float.init).withUnsafeBufferPointer { ring.write($0) } // wraps around
+        XCTAssertEqual(ring.newest(4).samples, [10, 11, 12, 13])
+        XCTAssertEqual(ring.newest(4).written, 13)
+        XCTAssertEqual(ring.newest(10).samples, [0, 0, 6, 7, 8, 9, 10, 11, 12, 13], "never more than it holds")
+    }
+
+    func testChannelsAreMixedToMono() {
+        let ring = SampleRing(capacity: 8)
+        var left: [Float] = [1, 1], right: [Float] = [0, -1]
+        left.withUnsafeMutableBufferPointer { l in
+            right.withUnsafeMutableBufferPointer { r in
+                let channels = [l.baseAddress!, r.baseAddress!]
+                channels.withUnsafeBufferPointer { ring.write(channels: $0.baseAddress!, channelCount: 2, frames: 2) }
+            }
+        }
+        XCTAssertEqual(ring.newest(2).samples, [0.5, 0])
+    }
+
+    func testLevelsFollowTheNewestSound() {
+        let analyzer = AudioAnalyzer(startsInput: false)
+        let rate = 48_000.0
+        // A loud burst, then 50 ms of silence: the peak already reads silence (an input tap
+        // delivering ~0.1 s at a time would still show the burst).
+        analyzer.receive([Float](repeating: 0.9, count: 2400), sampleRate: rate)
+        XCTAssertEqual(analyzer.snapshot().peak, 0.9, accuracy: 0.001)
+        analyzer.receive([Float](repeating: 0, count: 2400))
+        XCTAssertEqual(analyzer.snapshot().peak, 0)
+
+        // A 1 kHz tone shows in the spectrum as soon as it arrives.
+        let tone = (0..<AudioAnalyzer.fftSize).map { Float(0.5 * sin(2 * Double.pi * 1000 * Double($0) / rate)) }
+        analyzer.receive(tone)
+        let snapshot = analyzer.snapshot()
+        let loudest = snapshot.magnitudes.indices.max { snapshot.magnitudes[$0] < snapshot.magnitudes[$1] }!
+        XCTAssertEqual(Double(loudest) * rate / Double(AudioAnalyzer.fftSize), 1000, accuracy: rate / Double(AudioAnalyzer.fftSize))
+        XCTAssertEqual(snapshot.waveform.count, AudioAnalyzer.fftSize)
+        XCTAssertGreaterThan(snapshot.rms, 0.3)
+    }
+}
