@@ -141,6 +141,29 @@ package final class ImageImporterPatch: Patch {
     }
 }
 
+/// The size of an image in pixels and its aspect ratio (QC's Image Dimensions).
+package final class ImageDimensionsPatch: Patch {
+    package override class var typeID: String { "image-dimensions" }
+    package override class var title: String { "Image Dimensions" }
+    package override class var summary: String {
+        "Width and height of an image in pixels, and its aspect ratio. Multiply a width by Height / Width to keep an image's shape."
+    }
+    package override class var inputSpecs: [PortSpec] { [.image("image", "Image")] }
+    package override class var outputSpecs: [PortSpec] {
+        [.number("width", "Width"), .number("height", "Height"),
+         .number("ratio", "Aspect Ratio (W / H)"), .number("inverse", "Height / Width")]
+    }
+
+    package override func evaluate(_ i: Inputs, _ ctx: EvalContext) -> [String: Value] {
+        // No image: everything 0, so nothing sized from it shows up stretched.
+        guard let image = i.image("image"), image.width > 0, image.height > 0 else {
+            return ["width": .number(0), "height": .number(0), "ratio": .number(0), "inverse": .number(0)]
+        }
+        let w = Double(image.width), h = Double(image.height)
+        return ["width": .number(w), "height": .number(h), "ratio": .number(w / h), "inverse": .number(h / w)]
+    }
+}
+
 package final class TextImagePatch: Patch {
     package override class var typeID: String { "text-image" }
     package override class var title: String { "Text Image" }

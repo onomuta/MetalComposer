@@ -46,6 +46,9 @@ package final class RenderResources {
         return try? device.makeRenderPipelineState(descriptor: d)
     }()
 
+    /// The passes behind Tile and Outline (nil if their pipelines failed to build).
+    package private(set) lazy var imageEffects: ImageEffects? = try? ImageEffects(device: device, library: library)
+
     /// Folder that relative file paths (Image Importer) are resolved against: the composition's folder.
     package var baseDirectory: URL?
 

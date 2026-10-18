@@ -41,6 +41,92 @@ package enum ShaderLibrary {
         return c;
     }
 
+    // Image effects (Tile, Outline): a full-target triangle with texture coordinates whose origin
+    // is the top-left, like the images themselves.
+    struct FXOut { float4 position [[position]]; float2 uv; };
+
+    vertex FXOut fx_vertex(uint vid [[vertex_id]]) {
+        float2 p = float2(float((vid << 1) & 2), float(vid & 2));
+        FXOut o;
+        o.position = float4(p * 2.0 - 1.0, 0.0, 1.0);
+        o.uv = float2(p.x, 1.0 - p.y);
+        return o;
+    }
+
+    struct TileParams { float2 tiles; float2 offset; int mirror; };
+
+    fragment float4 tile_fragment(FXOut in [[stage_in]], texture2d<float> src [[texture(0)]],
+                                  constant TileParams& p [[buffer(0)]]) {
+        constexpr sampler s(filter::linear, address::clamp_to_edge);
+        float2 t = in.uv * p.tiles + p.offset;
+        float2 cell = floor(t);
+        float2 f = t - cell;
+        if (p.mirror != 0) {
+            // Every other tile flipped, so neighbouring tiles meet edge to edge.
+            float2 odd = fmod(abs(cell), 2.0);
+            f = float2(odd.x >= 1.0 ? 1.0 - f.x : f.x, odd.y >= 1.0 ? 1.0 - f.y : f.y);
+        }
+        return src.sample(s, f);
+    }
+
+    // Outline: a jump flood finds, for every pixel, the nearest pixel inside the image's shape
+    // (alpha ≥ 0.5); the outline covers pixels within `width` of it.
+    constant float2 noSeed = float2(-1.0e6);
+
+    // The target can be larger than the source by `margin` pixels on every side, so the outline
+    // isn't cut off where the shape touches the image's edge.
+    static float4 readMargined(texture2d<float> src, int2 pos, int margin) {
+        int2 p = pos - margin;
+        if (p.x < 0 || p.y < 0 || p.x >= int(src.get_width()) || p.y >= int(src.get_height())) return float4(0.0);
+        return src.read(uint2(p));
+    }
+
+    fragment float2 jfa_seed_fragment(FXOut in [[stage_in]], texture2d<float> src [[texture(0)]],
+                                      constant int& margin [[buffer(0)]]) {
+        int2 pos = int2(in.position.xy);
+        return readMargined(src, pos, margin).a >= 0.5 ? float2(pos) : noSeed;
+    }
+
+    fragment float2 jfa_step_fragment(FXOut in [[stage_in]], texture2d<float> seeds [[texture(0)]],
+                                      constant int& step [[buffer(0)]]) {
+        int2 pos = int2(in.position.xy);
+        int2 size = int2(seeds.get_width(), seeds.get_height());
+        float2 here = float2(pos);
+        float2 best = noSeed;
+        float bestDistance = 1.0e12;
+        for (int y = -1; y <= 1; y++) {
+            for (int x = -1; x <= 1; x++) {
+                int2 q = clamp(pos + int2(x, y) * step, int2(0), size - 1);
+                float2 seed = seeds.read(uint2(q)).xy;
+                float d = distance_squared(seed, here);
+                if (seed.x > -1.0e5 && d < bestDistance) { bestDistance = d; best = seed; }
+            }
+        }
+        return best;
+    }
+
+    struct OutlineParams { float4 color; float width; int outlineOnly; int margin; };
+
+    fragment float4 outline_fragment(FXOut in [[stage_in]], texture2d<float> src [[texture(0)]],
+                                     texture2d<float> seeds [[texture(1)]], constant OutlineParams& p [[buffer(0)]]) {
+        uint2 pos = uint2(in.position.xy);
+        float4 image = readMargined(src, int2(pos), p.margin);
+        float2 seed = seeds.read(pos).xy;
+        // Distance from the shape's edge, which lies half a pixel beyond the nearest inside pixel's center.
+        float d = seed.x > -1.0e5 ? distance(seed, float2(pos)) - 0.5 : 1.0e6;
+        // `width` whole pixels, softened over one pixel at the outer edge.
+        float ring = clamp(p.width + 0.5 - d, 0.0, 1.0) * p.color.a;
+        if (p.outlineOnly != 0) {
+            float a = ring * (1.0 - image.a);
+            return float4(p.color.rgb, a);
+        }
+        // The image over its outline (straight alpha in and out).
+        float a = image.a + ring * (1.0 - image.a);
+        if (a <= 0.0) return float4(0.0);
+        float3 rgb = (image.rgb * image.a + p.color.rgb * ring * (1.0 - image.a)) / a;
+        return float4(rgb, a);
+    }
+
     // Text Image: glyph images from the atlas (coverage in red) placed in pixel coordinates.
     struct GlyphInstance { float4 destination; float4 source; }; // x, y (top-left), width, height
     struct GlyphOut { float4 position [[position]]; float2 uv; };

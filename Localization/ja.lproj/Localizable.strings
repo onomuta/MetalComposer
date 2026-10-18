@@ -247,6 +247,9 @@
 "Random value that changes a given number of times per second." = "1 秒に指定した回数だけ変わるランダムな値。";
 "Renders a string into an image (white, tint it with Sprite color)." = "文字列を画像にします（白。Sprite の色で色を付けられます）。";
 "One character of a string by index, with the count and where Text Image places it, for letter-by-letter animation." = "文字列から Index 番目の 1 文字を取り出し、文字数と、Text Image で置かれる位置も出力します。1 文字ずつのアニメーションに使います。";
+"Width and height of an image in pixels, and its aspect ratio. Multiply a width by Height / Width to keep an image's shape." = "画像の幅と高さ（ピクセル）と、縦横の比率を出力します。幅に Height / Width を掛けると、画像の形のままの高さになります。";
+"Repeats an image in a grid. Offset scrolls the tiles (animate it to move them); Mirror flips every other tile so they join seamlessly." = "画像を格子状に繰り返します。Offset でタイルをずらせます（動かすとスクロールします）。Mirror をオンにすると 1 つおきに反転し、つなぎ目が目立たなくなります。";
+"Adds an outline of any color and width (in pixels) around the opaque shape of an image, such as text or a logo. The image grows by the width on every side so the outline isn't cut off. Outline Only leaves out the image itself." = "文字やロゴなど、画像の不透明な形のまわりに、好きな色と太さ（ピクセル）の縁取りを付けます。縁取りが切れないよう、画像は四辺とも太さの分だけ大きくなります。Outline Only をオンにすると、縁取りだけを出します。";
 "Renders its contents offscreen and outputs the image. Loop the output back in for feedback." = "中身を画面外に描いて、画像として出力します。出力を入力に戻すとフィードバックになります。";
 "Rounds a value, optionally to a multiple of a step." = "値を丸めます。指定した刻みの倍数にもできます。";
 "Routes the input to the output selected by Destination Index (0-based)." = "入力を、Destination Index（0 から数える）で選んだ出力に送ります。";
