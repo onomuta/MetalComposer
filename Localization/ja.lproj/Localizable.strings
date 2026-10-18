@@ -50,6 +50,9 @@
 "Hide Patch Library" = "パッチライブラリを隠す";
 "Show Patch Library" = "パッチライブラリを表示";
 "Close Patch Library" = "パッチライブラリを閉じる";
+"Do you want to save the changes to “%@”?" = "“%@” の変更内容を保存しますか？";
+"Your changes will be lost if you don't save them." = "保存しないと、変更内容は失われます。";
+"Don't Save" = "保存しない";
 "Open Recent" = "最近使った項目を開く";
 "Clear Menu" = "メニューを消去";
 "The file can't be found" = "ファイルが見つかりません";

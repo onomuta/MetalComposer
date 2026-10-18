@@ -254,11 +254,11 @@ final class Composition: ObservableObject {
 
     #if os(macOS)
     /// True while a text field or text view has the keyboard; edit commands then belong to the text.
-    static var isEditingText: Bool { NSApp.keyWindow?.firstResponder is NSText }
+    static var isEditingText: Bool { NSApp?.keyWindow?.firstResponder is NSText } // NSApp is nil outside a running app (tests)
 
     /// The focused text view's undo stack, while one is being edited.
     private static var textUndoManager: UndoManager? {
-        (NSApp.keyWindow?.firstResponder as? NSTextView)?.undoManager
+        (NSApp?.keyWindow?.firstResponder as? NSTextView)?.undoManager
     }
 
     /// Runs an Edit-menu command on the graph, or forwards it to the focused text.
@@ -487,9 +487,20 @@ final class Composition: ObservableObject {
         selection = []
         fileURL = url
         undoManager.removeAllActions()
+        markSaved()
         touch()
         DispatchQueue.main.async { NotificationCenter.default.post(name: .compositionReplaced, object: self) }
     }
+
+    /// The document as it was last opened or saved, to tell whether it has changed since.
+    private var savedData: Data?
+
+    /// Remembers the current content as saved (after opening, saving, or starting a new document).
+    func markSaved() { savedData = try? encoded() }
+
+    /// Whether the content differs from what was last opened or saved. Comparing the content (not
+    /// counting edits) means undoing back to the saved state counts as unchanged.
+    var hasUnsavedChanges: Bool { (try? encoded()) != savedData }
 
     func encoded() throws -> Data {
         let encoder = JSONEncoder()

@@ -35,6 +35,18 @@ final class AppState: ObservableObject {
     /// A problem to show the user (iOS shows it as an alert; the Mac uses NSAlert directly).
     @Published var alert: AppAlert?
     var keyMonitor: Any?
+    #if os(macOS)
+    /// File › Open Recent.
+    let recentFiles = RecentFiles()
+    /// A file opened from Open Recent, whose sandbox access stays on while it's the document
+    /// (so Save can write it back).
+    var accessedURL: URL?
+    /// Opens the main window again (after closing it was cancelled because of unsaved changes).
+    var reopenMainWindow: (() -> Void)?
+    /// Rebuilds the menus when the recent list changes (SwiftUI menus don't follow an object
+    /// observed only inside them).
+    private var recentFilesChange: AnyCancellable?
+    #endif
     private var documentFolder: AnyCancellable?
     private var parametersReset: AnyCancellable?
     private var viewerRestart: AnyCancellable?
@@ -62,6 +74,9 @@ final class AppState: ObservableObject {
         #if os(macOS)
         viewerRestart = NotificationCenter.default.publisher(for: .restartViewerDisplayLink)
             .sink { [weak self] _ in self?.viewerGeneration += 1 }
+        #endif
+        #if os(macOS)
+        recentFilesChange = recentFiles.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
         #endif
         parametersReset = NotificationCenter.default.publisher(for: .compositionReplaced)
             .sink { [renderer] _ in renderer.parameters.values = [:] }
@@ -98,6 +113,10 @@ final class AppState: ObservableObject {
         do {
             try composition.encoded().write(to: url, options: .atomic)
             composition.fileURL = url
+            composition.markSaved()
+            #if os(macOS)
+            recentFiles.add(url)
+            #endif
             return true
         } catch {
             show(AppAlert(error))
@@ -138,6 +157,9 @@ final class AppState: ObservableObject {
         do {
             let unknown = try composition.load(Data(contentsOf: url), url: url)
             playback.restart()
+            #if os(macOS)
+            recentFiles.add(url)
+            #endif
             if !unknown.isEmpty {
                 show(AppAlert(title: loc("Some patches couldn't be loaded"),
                               message: loc("This composition uses patches this version of Mirage Composer doesn't know: %@. They were skipped along with their connections. It was probably saved by a newer version; saving it here will drop them.",
@@ -219,6 +241,7 @@ struct ContentView: View {
             .onChange(of: state.libraryCloseRequest) { _, _ in showFloatingLibrary = false }
         }
         #if os(macOS)
+        .onAppear { state.reopenMainWindow = { openWindow(id: "main") } }
         .navigationTitle(composition.fileURL?.deletingPathExtension().lastPathComponent ?? "Mirage Composer")
         #endif
         .alert(item: $state.alert) { alert in

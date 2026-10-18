@@ -133,3 +133,30 @@ extension EditingTests {
         XCTAssertEqual(state.librarySearchRequest, requests + 2)
     }
 }
+
+extension EditingTests {
+    /// What "unsaved changes" means for asking before quitting.
+    func testUnsavedChangesFollowTheContent() throws {
+        let state = AppState()
+        let c = state.composition
+        c.loadDemo(.basics)
+        XCTAssertFalse(c.hasUnsavedChanges, "an untouched demo")
+        let lfo = try XCTUnwrap(c.graph.nodes.first { $0 is LFOPatch })
+        c.setParam(lfo, "period", .number(3))
+        XCTAssertTrue(c.hasUnsavedChanges)
+        c.undo()
+        XCTAssertFalse(c.hasUnsavedChanges, "undone back to where it was")
+
+        c.setParam(lfo, "period", .number(5))
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("unsaved-\(UUID().uuidString).mcomp")
+        addTeardownBlock { try? FileManager.default.removeItem(at: file) }
+        XCTAssertTrue(state.write(to: file))
+        XCTAssertFalse(c.hasUnsavedChanges, "saved")
+
+        c.setParam(lfo, "period", .number(6))
+        try c.load(Data(contentsOf: file), url: file)
+        XCTAssertFalse(c.hasUnsavedChanges, "just opened")
+        state.newComposition()
+        XCTAssertFalse(c.hasUnsavedChanges, "a new, untouched composition")
+    }
+}

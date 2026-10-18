@@ -29,24 +29,82 @@ extension AppState {
         exporter.start(record: composition.root.record(), resources: renderer.resources, to: url)
     }
 
+    /// Opens a file from File › Open Recent.
+    func openRecent(_ item: RecentFiles.Item) {
+        guard confirmDiscardingChanges() else { return }
+        guard let url = recentFiles.resolve(item) else {
+            recentFiles.remove(item)
+            show(AppAlert(title: loc("The file can't be found"),
+                          message: loc("%@ may have been moved, renamed or deleted. It was removed from Open Recent.", item.path)))
+            return
+        }
+        if let previous = accessedURL, previous != url { previous.stopAccessingSecurityScopedResource() }
+        accessedURL = url
+        open(url)
+    }
+
     func open() {
+        guard confirmDiscardingChanges() else { return }
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.metalComposition, .json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         open(url)
     }
 
-    func save(as: Bool = false) {
+    /// Saves (asking where for a new document or Save As). False when cancelled or it failed.
+    @discardableResult
+    func save(as: Bool = false) -> Bool {
         var url = composition.fileURL
         if url == nil || `as` {
             let panel = NSSavePanel()
             panel.allowedContentTypes = [.metalComposition]
             panel.nameFieldStringValue = loc("Untitled") + ".mcomp"
-            guard panel.runModal() == .OK, let chosen = panel.url else { return }
+            guard panel.runModal() == .OK, let chosen = panel.url else { return false }
             url = chosen
         }
-        guard let url else { return }
-        write(to: url)
+        guard let url else { return false }
+        return write(to: url)
+    }
+
+    /// Asks whether to save unsaved changes before they would be lost (quitting, or opening another
+    /// composition: New, Open, Open Recent, Demos, a file from Finder). True to go on:
+    /// nothing to save, saved, or Don't Save. False for Cancel (or a save that didn't happen).
+    func confirmDiscardingChanges() -> Bool {
+        guard composition.hasUnsavedChanges else { return true }
+        let name = composition.fileURL?.deletingPathExtension().lastPathComponent ?? loc("Untitled")
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = loc("Do you want to save the changes to “%@”?", name)
+        alert.informativeText = loc("Your changes will be lost if you don't save them.")
+        alert.addButton(withTitle: loc("Save"))
+        alert.addButton(withTitle: loc("Cancel"))
+        let dontSave = alert.addButton(withTitle: loc("Don't Save"))
+        dontSave.keyEquivalent = "d"
+        dontSave.keyEquivalentModifierMask = .command
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return save()
+        case .alertThirdButtonReturn: return true
+        default: return false
+        }
+    }
+}
+
+/// File › Open Recent: the latest compositions, newest first.
+private struct RecentFilesMenu: View {
+    let recent: RecentFiles
+    /// Passed in (rather than observed here) so the menu is rebuilt with the app's state.
+    let items: [RecentFiles.Item]
+    let open: (RecentFiles.Item) -> Void
+
+    var body: some View {
+        Menu("Open Recent") {
+            ForEach(items) { item in
+                Button(recent.needsFolder(item) ? "\(item.name) — \(item.folder)" : item.name) { open(item) }
+            }
+            if !items.isEmpty { Divider() }
+            Button("Clear Menu") { recent.clear() }
+                .disabled(items.isEmpty)
+        }
     }
 }
 
@@ -62,7 +120,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// Set by the app: asks about unsaved changes (true to go on), and reopens the main window.
+    var confirmDiscardingChanges: (() -> Bool)?
+    var reopenMainWindow: (() -> Void)?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        confirmDiscardingChanges?() ?? true ? .terminateNow : .terminateCancel
+    }
+
+    /// Closing the window quits, after asking about unsaved changes. The composition lives in the
+    /// app state, so Cancel just opens the window again with it.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        guard let confirm = confirmDiscardingChanges else { return true }
+        DispatchQueue.main.async { [weak self] in
+            if confirm() {
+                self?.confirmDiscardingChanges = nil // already answered: don't ask again while quitting
+                NSApp.terminate(nil)
+            } else {
+                self?.reopenMainWindow?()
+            }
+        }
+        return false
+    }
 
     /// Files opened from Finder or dropped on the Dock icon. They can arrive before the window
     /// (and the app state) exists, so they wait until `openHandler` is set.
@@ -96,7 +175,11 @@ public struct MetalComposerApp: App {
         Window("Mirage Composer", id: "main") {
             ContentView(state: state, composition: state.composition)
                 .frame(minWidth: 1100, minHeight: 680)
-                .onAppear { [state] in delegate.openHandler = { state.open($0) } }
+                .onAppear { [state] in
+                    delegate.openHandler = { url in if state.confirmDiscardingChanges() { state.open(url) } }
+                    delegate.confirmDiscardingChanges = { state.confirmDiscardingChanges() }
+                    delegate.reopenMainWindow = { state.reopenMainWindow?() }
+                }
         }
         .defaultSize(width: 1500, height: 900)
 
@@ -110,12 +193,14 @@ public struct MetalComposerApp: App {
         .defaultSize(width: 960, height: 540)
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Composition") { state.newComposition() }.keyboardShortcut("n")
+                Button("New Composition") { if state.confirmDiscardingChanges() { state.newComposition() } }
+                    .keyboardShortcut("n")
                 Button("Open…") { state.open() }.keyboardShortcut("o")
+                RecentFilesMenu(recent: state.recentFiles, items: state.recentFiles.items) { state.openRecent($0) }
                 Divider()
                 Menu("Demos") {
                     ForEach(Demo.allCases) { demo in
-                        Button(demo.rawValue) { state.loadDemo(demo) }
+                        Button(demo.rawValue) { if state.confirmDiscardingChanges() { state.loadDemo(demo) } }
                     }
                 }
             }

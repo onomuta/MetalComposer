@@ -8,6 +8,9 @@
 	<!-- Open and save compositions, import images and export movies where the user chooses. -->
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
+	<!-- File › Open Recent reopens those files after a relaunch (security-scoped bookmarks). -->
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
 	<!-- Audio Input / Audio Spectrum read the microphone. -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
