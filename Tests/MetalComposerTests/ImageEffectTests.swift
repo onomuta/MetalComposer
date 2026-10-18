@@ -102,3 +102,31 @@ final class ImageEffectTests: XCTestCase {
         XCTAssertEqual(Set(images.map { ObjectIdentifier($0) }).count, 3)
     }
 }
+
+extension ImageEffectTests {
+    func testCropRegion() {
+        func r(_ pixels: Bool, _ x: Double, _ y: Double, _ w: Double, _ h: Double) -> [Int]? {
+            ImageCropPatch.region(imageWidth: 200, imageHeight: 100, pixels: pixels, x: x, y: y, width: w, height: h)
+                .map { [$0.x, $0.y, $0.width, $0.height] }
+        }
+        XCTAssertEqual(r(false, 0.25, 0.5, 0.5, 0.5), [50, 50, 100, 50], "fractions of the image")
+        XCTAssertEqual(r(true, 10, 20, 30, 40), [10, 20, 30, 40], "pixels")
+        XCTAssertEqual(r(true, 180, 90, 50, 50), [180, 90, 20, 10], "kept inside the image")
+        XCTAssertEqual(r(true, -10, -10, 30, 30), [0, 0, 20, 20])
+        XCTAssertNil(r(false, 0.5, 0.5, 0, 0.2), "nothing left")
+        XCTAssertNil(r(true, 300, 0, 10, 10))
+    }
+
+    func testCropCutsThePixels() throws {
+        // Left half red, right half blue; take the right quarter of the top half.
+        let halves = try image { x, y in x < 32 ? [255, 0, 0, 255] : [0, 0, 255, y < 32 ? 255 : 128] }
+        let (out, read) = try run(ImageCropPatch(), ["image": .image(halves), "x": .number(0.75), "y": .number(0),
+                                                     "width": .number(0.25), "height": .number(0.5)])
+        XCTAssertEqual([out.width, out.height], [16, 32])
+        XCTAssertEqual(read(0, 0), [0, 0, 255, 255])
+        XCTAssertEqual(read(15, 31), [0, 0, 255, 255])
+
+        let whole = try run(ImageCropPatch(), ["image": .image(halves)]).texture
+        XCTAssertTrue(whole === halves, "no crop passes the image through")
+    }
+}
