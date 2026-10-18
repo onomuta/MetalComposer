@@ -5,7 +5,37 @@ import MetalPerformanceShaders
 import SwiftUI
 import MetalComposerKit
 
-struct MetalViewer {
+/// The live viewer. Where the composition is transparent (no Clear, or a Clear with alpha below 1),
+/// a gray checkerboard shows through, as in image editors.
+struct MetalViewer: View {
+    let renderer: Renderer
+
+    var body: some View {
+        MetalViewerSurface(renderer: renderer)
+            .background(TransparencyCheckerboard())
+    }
+}
+
+/// Gray squares drawn behind the viewer, so transparent areas read as transparent.
+struct TransparencyCheckerboard: View {
+    var square: CGFloat = 8
+
+    var body: some View {
+        Canvas { ctx, size in
+            ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(Color(white: 0.30)))
+            var squares = Path()
+            for row in 0..<Int((size.height / square).rounded(.up)) {
+                for column in stride(from: row % 2, to: Int((size.width / square).rounded(.up)), by: 2) {
+                    squares.addRect(CGRect(x: CGFloat(column) * square, y: CGFloat(row) * square, width: square, height: square))
+                }
+            }
+            ctx.fill(squares, with: .color(Color(white: 0.22)))
+        }
+        .drawingGroup()
+    }
+}
+
+private struct MetalViewerSurface {
     let renderer: Renderer
 
     fileprivate func makeView() -> ComposerMTKView {
@@ -16,6 +46,13 @@ struct MetalViewer {
         view.preferredFramesPerSecond = 120
         // Mirror previews copy the frame out of the drawable.
         view.framebufferOnly = false
+        // Transparent pixels let the checkerboard behind the view show through.
+        #if os(macOS)
+        view.layer?.isOpaque = false
+        #else
+        view.isOpaque = false
+        view.backgroundColor = .clear
+        #endif
         view.renderer = renderer
         view.delegate = renderer
         return view
@@ -23,12 +60,12 @@ struct MetalViewer {
 }
 
 #if os(macOS)
-extension MetalViewer: NSViewRepresentable {
+extension MetalViewerSurface: NSViewRepresentable {
     func makeNSView(context: Context) -> ComposerMTKView { makeView() }
     func updateNSView(_ view: ComposerMTKView, context: Context) {}
 }
 #else
-extension MetalViewer: UIViewRepresentable {
+extension MetalViewerSurface: UIViewRepresentable {
     func makeUIView(context: Context) -> ComposerMTKView { makeView() }
     func updateUIView(_ view: ComposerMTKView, context: Context) {}
 }

@@ -63,7 +63,10 @@ final class Renderer: NSObject, MTKViewDelegate {
                               mouse: mouse, mouseDown: mouseDown,
                               published: parameters.published(for: composition), inspect: composition.selection)
         ctx.host = parameters.host(for: composition)
-        FrameRenderer.encodeFrame(graph: composition.root, context: ctx, pass: pass, targetSize: view.drawableSize)
+        // Start transparent, like a movie exported with alpha: what the composition doesn't cover
+        // shows the checkerboard behind the viewer (mirrors on external displays show it black).
+        FrameRenderer.encodeFrame(graph: composition.root, context: ctx, pass: pass, targetSize: view.drawableSize,
+                                  clearAlpha: 0)
         if mirrorCount > 0 { copyForMirrors(drawable.texture, commandBuffer) }
         commandBuffer.present(drawable)
         commandBuffer.commit()
