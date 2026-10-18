@@ -105,7 +105,7 @@ struct ParametersPanel: View {
                     } header: {
                         Text("ONOM FLOW")
                     } footer: {
-                        Text("Try what ONOM FLOW would send to the ONOM FLOW Input patch. Without a value, Beat follows the BPM.")
+                        Text("Try what ONOM FLOW would send to the ONOM FLOW Input patch. Without a value, Beat, Beat 2 and Beat 4 follow the BPM.")
                     }
                 }
             }

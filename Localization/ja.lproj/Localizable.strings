@@ -50,6 +50,10 @@
 "Hide Patch Library" = "パッチライブラリを隠す";
 "Show Patch Library" = "パッチライブラリを表示";
 "Close Patch Library" = "パッチライブラリを閉じる";
+"Open Recent" = "最近使った項目を開く";
+"Clear Menu" = "メニューを消去";
+"The file can't be found" = "ファイルが見つかりません";
+"%@ may have been moved, renamed or deleted. It was removed from Open Recent." = "%@ は、移動・名前の変更・削除された可能性があります。「最近使った項目を開く」から外しました。";
 "Find Patch…" = "パッチを検索…";
 "Find Patch" = "パッチを検索";
 "Play / Pause" = "再生／一時停止";
@@ -256,7 +260,7 @@
 "Routes the input to the output selected by Destination Index (0-based)." = "入力を、Destination Index（0 から数える）で選んだ出力に送ります。";
 "Runs its contents N times per frame. Use Iterator Variables inside for index/position." = "中身を 1 フレームに N 回実行します。番号や位置は、中に置いた Iterator Variables で取得します。";
 "Seconds since playback started." = "再生を始めてからの秒数。";
-"Values ONOM FLOW passes in: BPM, beat, gain, Input 1–4, texts, images and its main and sub colors." = "ONOM FLOW から渡される値。BPM、拍の位置、Gain、Input 1〜4、文字、画像、メインとサブの色を出力します。";
-"Try what ONOM FLOW would send to the ONOM FLOW Input patch. Without a value, Beat follows the BPM." = "ONOM FLOW が ONOM FLOW Input パッチへ送る値を試せます。Beat は、値を入れなければ BPM に合わせて進みます。";
+"Values ONOM FLOW passes in: BPM, beat (also over 2 and 4 beats), gain, Input 1–4, texts, images and its main and sub colors." = "ONOM FLOW から渡される値。BPM、拍の位置（2 拍・4 拍ごとの位置も）、Gain、Input 1〜4、文字、画像、メインとサブの色を出力します。";
+"Try what ONOM FLOW would send to the ONOM FLOW Input patch. Without a value, Beat, Beat 2 and Beat 4 follow the BPM." = "ONOM FLOW が ONOM FLOW Input パッチへ送る値を試せます。Beat、Beat 2、Beat 4 は、値を入れなければ BPM に合わせて進みます。";
 "Sphere in 3D space. The image wraps around it as an equirectangular (latitude/longitude) map." = "3D 空間の球。画像は正距円筒図法（緯度・経度）として周りに巻き付きます。";
 "Volume (peak and RMS) and waveform of the microphone / default audio input." = "マイク（既定の音声入力）の音量（ピークと RMS）と波形。";

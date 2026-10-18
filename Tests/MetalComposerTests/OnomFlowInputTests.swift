@@ -26,7 +26,7 @@ final class OnomFlowInputTests: XCTestCase {
 
         let with = try CompositionPlayer(engine: engine(), data: mainColorInsideAMacro())
         XCTAssertEqual(with.parameters.map(\.name), [
-            "BPM", "Beat", "Gain", "Input 1", "Input 2", "Input 3", "Input 4",
+            "BPM", "Beat", "Beat 2", "Beat 4", "Gain", "Input 1", "Input 2", "Input 3", "Input 4",
             "Text 1", "Text 2", "Image 1", "Image 2", "Main Color", "Sub Color",
         ], "the names ONOM FLOW sends, found even inside a macro")
         XCTAssertEqual(with.parameters.first { $0.name == "Text 1" }?.type, .string)
@@ -71,5 +71,31 @@ final class OnomFlowInputTests: XCTestCase {
         XCTAssertNil(out["image1"]?.image)
         XCTAssertEqual(out["subColor"]?.color, .one)
         XCTAssertEqual(Set(out.keys), Set(OnomFlowInputPatch.outputSpecs.map(\.key)))
+    }
+
+    func testBeat2AndBeat4SpanTwoAndFourBeats() throws {
+        let resources = try RenderResources(device: try XCTUnwrap(MTLCreateSystemDefaultDevice()))
+        let patch = OnomFlowInputPatch()
+        func out(at time: Double, host: [String: Value] = [:]) -> (Double, Double, Double) {
+            var ctx = EvalContext(resources: resources, commandBuffer: resources.queue.makeCommandBuffer()!,
+                                  time: time, deltaTime: 1.0 / 60, viewportSize: CGSize(width: 64, height: 64),
+                                  mouse: .zero, mouseDown: false)
+            ctx.host = host
+            let o = patch.evaluate(Inputs(values: [:]), ctx)
+            return (o["beat"]!.number, o["beat2"]!.number, o["beat4"]!.number)
+        }
+        // 120 BPM without a host: 1.25 s is 2.5 beats.
+        let (b1, b2, b4) = out(at: 1.25)
+        XCTAssertEqual(b1, 0.5, accuracy: 1e-9)
+        XCTAssertEqual(b2, 0.25, accuracy: 1e-9, "a quarter into the second pair of beats")
+        XCTAssertEqual(b4, 0.625, accuracy: 1e-9)
+        // Each starts again at 0 on its own count.
+        XCTAssertEqual(out(at: 1.0).1, 0, accuracy: 1e-9, "beat 3 starts a new pair")
+        XCTAssertEqual(out(at: 2.0).2, 0, accuracy: 1e-9, "beat 5 starts a new bar")
+        // What the host sends wins, each value on its own.
+        let hosted = out(at: 1.25, host: ["onom-flow.beat2": .number(0.8), "onom-flow.beat4": .number(0.1)])
+        XCTAssertEqual(hosted.1, 0.8)
+        XCTAssertEqual(hosted.2, 0.1)
+        XCTAssertEqual(hosted.0, 0.5, accuracy: 1e-9, "Beat still runs on the clock")
     }
 }
