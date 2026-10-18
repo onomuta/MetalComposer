@@ -145,6 +145,9 @@ package struct EvalContext {
     /// Values the host app set for the whole composition (ONOM FLOW Input), keyed by host key.
     /// Unlike `published`, they reach every macro unchanged.
     package var host: [String: Value] = [:]
+    /// True in the editor's viewer: inputs a host app would fill (ONOM FLOW Input's images) show a
+    /// placeholder instead of nothing. Hosts, movie export and mirage-mcp leave it off.
+    package var showsPlaceholders = false
     /// Current iteration when evaluated inside an Iterator.
     package var iteration: (index: Int, count: Int)? = nil
     /// Patches to evaluate even when nothing consumes them (for the inspector).

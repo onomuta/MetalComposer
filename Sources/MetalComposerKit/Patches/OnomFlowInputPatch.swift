@@ -1,3 +1,5 @@
+import CoreGraphics
+import CoreText
 import Foundation
 import Metal
 
@@ -63,6 +65,12 @@ package final class OnomFlowInputPatch: Patch {
         for value in Self.hostValues {
             out[value.port] = ctx.host[value.key]?.coerced(to: value.type) ?? value.defaultValue
         }
+        // In the editor, an image ONOM FLOW would pass shows where it will go.
+        if ctx.showsPlaceholders {
+            for (index, port) in ["image1", "image2"].enumerated() where out[port]?.image == nil {
+                out[port] = .image(Self.placeholder(index, device: ctx.device))
+            }
+        }
         // Without a host, the beats run at the BPM on the composition's clock (0 at each beat, or each
         // 2 or 4 beats, rising to 1).
         let bpm = out["bpm"]?.number ?? Self.defaultBPM
@@ -71,6 +79,58 @@ package final class OnomFlowInputPatch: Patch {
             out[port] = .number(Self.phase(beats, over: length))
         }
         return out
+    }
+
+    private static var placeholders: [Int: MTLTexture] = [:]
+
+    /// A 16:9 stand-in for Image 1 / Image 2 in the editor: a frame, a big cross and the name, over a
+    /// faint gray, so it's clear where ONOM FLOW's image will appear.
+    package static func placeholder(_ index: Int, device: MTLDevice) -> MTLTexture? {
+        if let texture = placeholders[index] { return texture }
+        let w = 1280, h = 720
+        guard let cg = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                 space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: w, height: h)
+        cg.setFillColor(CGColor(gray: 0.5, alpha: 0.25))
+        cg.fill(rect)
+        cg.setStrokeColor(CGColor(gray: 1, alpha: 0.9))
+        cg.setLineWidth(12)
+        cg.stroke(rect.insetBy(dx: 6, dy: 6))
+        cg.setLineWidth(6)
+        cg.move(to: CGPoint(x: 0, y: 0)); cg.addLine(to: CGPoint(x: w, y: h))
+        cg.move(to: CGPoint(x: 0, y: h)); cg.addLine(to: CGPoint(x: w, y: 0))
+        cg.strokePath()
+        // The name on a dark label in the middle.
+        let label = "Image \(index + 1)"
+        let font = CTFontCreateWithName("HelveticaNeue-Bold" as CFString, 96, nil)
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: label, attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 1, alpha: 1),
+        ]))
+        let bounds = CTLineGetImageBounds(line, cg)
+        let box = CGRect(x: (CGFloat(w) - bounds.width) / 2 - 40, y: (CGFloat(h) - 150) / 2,
+                         width: bounds.width + 80, height: 150)
+        cg.setFillColor(CGColor(gray: 0, alpha: 0.75))
+        cg.addPath(CGPath(roundedRect: box, cornerWidth: 20, cornerHeight: 20, transform: nil))
+        cg.fillPath()
+        cg.textPosition = CGPoint(x: (CGFloat(w) - bounds.width) / 2 - bounds.minX, y: (CGFloat(h) - bounds.height) / 2 - bounds.minY)
+        CTLineDraw(line, cg)
+
+        guard let data = cg.data else { return nil }
+        // Straight alpha, like the other images.
+        let px = data.bindMemory(to: UInt8.self, capacity: w * h * 4)
+        for p in 0..<(w * h) {
+            let a = Int(px[p * 4 + 3])
+            guard a > 0, a < 255 else { continue }
+            for c in 0..<3 { px[p * 4 + c] = UInt8(min(255, Int(px[p * 4 + c]) * 255 / a)) }
+        }
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
+        desc.usage = [.shaderRead]
+        guard let texture = device.makeTexture(descriptor: desc) else { return nil }
+        texture.replace(region: MTLRegionMake2D(0, 0, w, h), mipmapLevel: 0, withBytes: data, bytesPerRow: w * 4)
+        placeholders[index] = texture
+        return texture
     }
 
     /// Where `beats` falls within a span of `length` beats, 0…1.

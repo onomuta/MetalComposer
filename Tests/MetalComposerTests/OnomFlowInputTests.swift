@@ -98,4 +98,25 @@ final class OnomFlowInputTests: XCTestCase {
         XCTAssertEqual(hosted.2, 0.1)
         XCTAssertEqual(hosted.0, 0.5, accuracy: 1e-9, "Beat still runs on the clock")
     }
+
+    func testImagePlaceholdersOnlyInTheEditor() throws {
+        let resources = try RenderResources(device: try XCTUnwrap(MTLCreateSystemDefaultDevice()))
+        let patch = OnomFlowInputPatch()
+        var ctx = EvalContext(resources: resources, commandBuffer: resources.queue.makeCommandBuffer()!,
+                              time: 0, deltaTime: 0, viewportSize: CGSize(width: 64, height: 64),
+                              mouse: .zero, mouseDown: false)
+        XCTAssertNil(patch.evaluate(Inputs(values: [:]), ctx)["image1"]?.image, "hosts and exports get nothing")
+
+        ctx.showsPlaceholders = true // the editor's viewer
+        let out = patch.evaluate(Inputs(values: [:]), ctx)
+        let one = try XCTUnwrap(out["image1"]?.image), two = try XCTUnwrap(out["image2"]?.image)
+        XCTAssertEqual([one.width, one.height], [1280, 720])
+        XCTAssertFalse(one === two, "each image has its own label")
+
+        // An image the host passes is used as it is.
+        let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: 8, height: 8, mipmapped: false)
+        let real = try XCTUnwrap(resources.device.makeTexture(descriptor: desc))
+        ctx.host["onom-flow.image1"] = .image(real)
+        XCTAssertTrue(patch.evaluate(Inputs(values: [:]), ctx)["image1"]?.image === real)
+    }
 }
